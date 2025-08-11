@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memshak Installer Download</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255,255,255,0.1);
+            padding: 40px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            text-align: center;
+        }
+        .download-btn {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            text-decoration: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            margin: 20px 0;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+        }
+        .download-btn:hover {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+        }
+        .info-box {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        .feature {
+            margin: 10px 0;
+        }
+        .feature::before {
+            content: "✅ ";
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏥 Memshak System Installer</h1>
+        <p>Professional healthcare management system - One-click installation</p>
+        
+        <a href="memshak-installer.bat" class="download-btn" download="memshak-installer.bat">
+            🚀 Download Installer
+        </a>
+        
+        <div class="info-box">
+            <h3>📋 Quick Start:</h3>
+            <ol>
+                <li>Click the download button above</li>
+                <li>Right-click the downloaded file → "Run as administrator"</li>
+                <li>Follow the prompts - everything is automated!</li>
+                <li>Access your system at <strong>https://localhost:8443</strong></li>
+            </ol>
+        </div>
+        
+        <div class="info-box">
+            <h3>✨ What you get:</h3>
+            <div class="feature">Complete Docker-based deployment</div>
+            <div class="feature">SSL certificates for secure HTTPS</div>
+            <div class="feature">PowerShell authentication server</div>
+            <div class="feature">Automatic system startup</div>
+            <div class="feature">Professional healthcare interface</div>
+        </div>
+        
+        <div class="info-box">
+            <h3>🖥️ Requirements:</h3>
+            <div class="feature">Windows 10/11</div>
+            <div class="feature">PowerShell 7</div>
+            <div class="feature">Docker Desktop</div>
+            <div class="feature">Administrator privileges (recommended)</div>
+        </div>
+        
+        <p style="margin-top: 30px; font-size: 14px; opacity: 0.8;">
+            Version 2.0 | Updated: <span id="updated"></span> | 
+            <a href="https://github.com/mickeyklai/memshak" style="color: #fff;">Source Code</a>
+        </p>
+    </div>
+    
+    <script>
+        document.getElementById('updated').textContent = new Date().toLocaleDateString();
+    </script>
+</body>
+</html>
