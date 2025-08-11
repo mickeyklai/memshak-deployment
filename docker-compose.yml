@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # Frontend service with HTTPS nginx reverse proxy
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: memshak-nginx-proxy
+    ports:
+      - "8443:443"   # HTTPS port
+      - "8080:80"    # HTTP redirect port
+      - "3000:3000"  # Direct API access (legacy)
+    volumes:
+      - ./nginx-https.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./web:/usr/share/nginx/html:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+    networks:
+      - memshak-network
+
+  # Frontend service (Angular) - using remote image
+  frontend:
+    image: mickeyklai/memshak-frontend:latest
+    container_name: memshak-frontend
+    # No external port mapping - only accessible through nginx proxy
+    environment:
+      - API_URL=/api  # Use relative URLs for API calls
+    restart: unless-stopped
+    networks:
+      - memshak-network
+
+  # Backend service (Express) - using remote image
+  backend:
+    image: mickeyklai/memshak-backend:latest
+    container_name: memshak-backend
+    # No external port mapping - only accessible through frontend proxy
+    environment:
+      - NODE_ENV=development
+      - USE_REMOTE_DATABASE=true
+      - REMOTE_SESSION_SERVICE=https://prolific-caring-production-44b9.up.railway.app/api/session/handoff
+      - REMOTE_DATABASE_SERVICE=https://prolific-caring-production-44b9.up.railway.app
+      - PROXY_AUTH_TOKEN=HJmbJFLlwrvigAK6s5c/nuslunsLeGE5H/lW/7mSr+o=
+      - REMOTE_AUTH_TOKEN=HJmbJFLlwrvigAK6s5c/nuslunsLeGE5H/lW/7mSr+o=
+      - PORT=3000
+      # PowerShell authentication server configuration (direct HTTP connection)
+      - AUTH_SERVER_URL=http://host.docker.internal:8888
+      # Certificate proxy configuration (using local certificate proxy now)
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - memshak-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  memshak-network:
+    driver: bridge
