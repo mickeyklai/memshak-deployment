@@ -25,6 +25,35 @@ if not exist "data" mkdir data
 if not exist "logs" mkdir logs
 if not exist "ssl" mkdir ssl
 
+REM Generate SSL certificates if they don't exist
+if not exist "ssl\localhost.crt" (
+    echo Generating SSL certificates for HTTPS...
+    
+    REM Check if running as admin
+    net session >nul 2>&1
+    if errorlevel 1 (
+        echo ⚠️  Running without administrator privileges
+        echo Creating basic SSL certificates (browsers may show warnings)
+        
+        if exist "generate-basic-ssl.ps1" (
+            pwsh -ExecutionPolicy Bypass -File "generate-basic-ssl.ps1"
+        ) else (
+            echo ❌ generate-basic-ssl.ps1 not found
+        )
+    ) else (
+        echo ✅ Running with administrator privileges
+        echo Creating SSL certificates with trusted root installation...
+        if exist "generate-ssl.ps1" (
+            pwsh -ExecutionPolicy Bypass -File "generate-ssl.ps1"
+        ) else (
+            echo ⚠️  generate-ssl.ps1 not found, creating basic certificates
+            if exist "generate-basic-ssl.ps1" (
+                pwsh -ExecutionPolicy Bypass -File "generate-basic-ssl.ps1"
+            )
+        )
+    )
+)
+
 REM Start containers using Docker Compose
 docker-compose up -d
 
