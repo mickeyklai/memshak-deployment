@@ -73,6 +73,23 @@ if errorlevel 1 (
     echo Web Interface (HTTP):  http://localhost:8080
     echo Direct API Access:     http://localhost:3000
     echo.
+    
+    REM Start the PowerShell authentication server
+    if exist "start-auth-server.bat" (
+        echo Starting PowerShell authentication server...
+        start /b cmd /c "start-auth-server.bat"
+        timeout /t 2 >nul
+        echo ✅ Authentication server started
+        echo    Auth Server: http://localhost:8081
+        echo    Certificate detection is automatic
+    ) else (
+        echo ⚠️  Authentication server script not found
+        echo    Manual certificate authentication may be required
+    )
+    
+    echo.
+    echo 🎉 All Memshak services are now running!
+    echo.
     echo Tip: It may take 1-2 minutes for all services to fully start
     echo Check status with: docker-compose ps
     echo View logs with: docker-compose logs -f
