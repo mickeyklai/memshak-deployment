@@ -42,6 +42,7 @@ services:
       - PROXY_AUTH_TOKEN=HJmbJFLlwrvigAK6s5c/nuslunsLeGE5H/lW/7mSr+o=
       - REMOTE_AUTH_TOKEN=HJmbJFLlwrvigAK6s5c/nuslunsLeGE5H/lW/7mSr+o=
       - PORT=3000
+      - DATA_DIRECTORY=/app/data
       # PowerShell authentication server configuration (direct HTTP connection)
       - AUTH_SERVER_URL=http://host.docker.internal:8888
       # Certificate proxy configuration (using local certificate proxy now)
