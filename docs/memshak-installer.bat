@@ -7,13 +7,6 @@ setlocal enabledelayedexpansion
 echo ==========================================
 echo    MEMSHAK CDN INSTALLER v2.0
 echo ==========================================
-echo.
-echo 🌍 Distributed via GitHub Releases CDN
-echo 📦 Source: https://github.com/mickeyklai/memshak/releases
-echo 🔄 Checking for updates...
-
-REM Check for newer version
-pwsh -Command "try { $latest = (Invoke-RestMethod 'https://api.github.com/repos/mickeyklai/memshak/releases/latest' -TimeoutSec 5).tag_name; $current = 'v2.0.0'; if ([version]($current -replace 'v','') -lt [version]($latest -replace 'v','')) { Write-Host '🆕 Newer version available:' $latest; Write-Host '📥 Download from: https://github.com/mickeyklai/memshak/releases/latest'; Write-Host '' } else { Write-Host '✅ You have the latest version' } } catch { Write-Host '⚠️  Update check failed (offline?)' }" 2>nul
 
 REM Check for Administrator privileges
 net session >nul 2>&1
