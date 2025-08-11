@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Frontend service with HTTPS nginx reverse proxy
   nginx-proxy:
