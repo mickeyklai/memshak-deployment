@@ -20,33 +20,55 @@ function Get-UserCertificate {
         # Ensure certificate provider is loaded
         Import-Module PKI -ErrorAction SilentlyContinue
         
-        # Try to access certificate store using different methods
+        # Try to access certificate store using different methods and locations
         $cert = $null
         
-        # Method 1: Try standard cert store access
+        # Method 1: Try CurrentUser store first
         try {
             $cert = Get-ChildItem -Path "Cert:\CurrentUser\My\$Thumbprint" -ErrorAction Stop
+            Write-Host "Found certificate in CurrentUser\My store"
         }
         catch {
-            Write-Host "Standard cert store access failed, trying alternative method..."
+            Write-Host "Certificate not found in CurrentUser\My store, trying LocalMachine store..."
             
-            # Method 2: Try using .NET X509Store directly
+            # Method 2: Try LocalMachine store
             try {
-                $store = New-Object System.Security.Cryptography.X509Certificates.X509Store("My", "CurrentUser")
-                $store.Open("ReadOnly")
-                $certificates = $store.Certificates
-                $cert = $certificates | Where-Object { $_.Thumbprint -eq $Thumbprint }
-                $store.Close()
-                
-                if ($cert) {
-                    Write-Host "Found certificate using .NET X509Store method"
-                }
-                else {
-                    Write-Host "Certificate not found in CurrentUser\My store"
-                }
+                $cert = Get-ChildItem -Path "Cert:\LocalMachine\My\$Thumbprint" -ErrorAction Stop
+                Write-Host "Found certificate in LocalMachine\My store"
             }
             catch {
-                Write-Host "Alternative certificate access method also failed: $($_.Exception.Message)"
+                Write-Host "Certificate not found in LocalMachine\My store, trying .NET X509Store methods..."
+                
+                # Method 3: Try using .NET X509Store for CurrentUser
+                try {
+                    $store = New-Object System.Security.Cryptography.X509Certificates.X509Store("My", "CurrentUser")
+                    $store.Open("ReadOnly")
+                    $certificates = $store.Certificates
+                    $cert = $certificates | Where-Object { $_.Thumbprint -eq $Thumbprint }
+                    $store.Close()
+                    
+                    if ($cert) {
+                        Write-Host "Found certificate using .NET CurrentUser X509Store method"
+                    }
+                    else {
+                        # Method 4: Try using .NET X509Store for LocalMachine
+                        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store("My", "LocalMachine")
+                        $store.Open("ReadOnly")
+                        $certificates = $store.Certificates
+                        $cert = $certificates | Where-Object { $_.Thumbprint -eq $Thumbprint }
+                        $store.Close()
+                        
+                        if ($cert) {
+                            Write-Host "Found certificate using .NET LocalMachine X509Store method"
+                        }
+                        else {
+                            Write-Host "Certificate not found in any certificate store"
+                        }
+                    }
+                }
+                catch {
+                    Write-Host "Certificate access methods failed: $($_.Exception.Message)"
+                }
             }
         }
         
