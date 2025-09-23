@@ -17,12 +17,12 @@ echo.
 REM Download installer files if they don't exist
 if not exist "%~dp0memshak-installer-enhanced.ps1" (
     echo 📥 Downloading PowerShell installer...
-    powershell -Command "try { Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/mickeyklai/memshak/master/railway-deployments/memshak-deployment-package/docs/memshak-installer-enhanced.ps1' -OutFile '%~dp0memshak-installer-enhanced.ps1' -UseBasicParsing; Write-Host '✅ PowerShell installer downloaded' } catch { Write-Host '❌ Failed to download PowerShell installer' }"
+    powershell -Command "try { Invoke-WebRequest -Uri 'https://mickeyklai.github.io/memshak-deployment/memshak-installer-enhanced.ps1' -OutFile 'memshak-installer-enhanced.ps1' -UseBasicParsing; Write-Host '✅ PowerShell installer downloaded' } catch { Write-Host '❌ Failed to download PowerShell installer' }"
 )
 
 if not exist "%~dp0memshak-installer-enhanced.bat" (
     echo 📥 Downloading Batch installer...
-    powershell -Command "try { Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/mickeyklai/memshak/master/railway-deployments/memshak-deployment-package/docs/memshak-installer-enhanced.bat' -OutFile '%~dp0memshak-installer-enhanced.bat' -UseBasicParsing; Write-Host '✅ Batch installer downloaded' } catch { Write-Host '❌ Failed to download Batch installer' }"
+    powershell -Command "try { Invoke-WebRequest -Uri 'https://mickeyklai.github.io/memshak-deployment/memshak-installer-enhanced.bat' -OutFile 'memshak-installer-enhanced.bat' -UseBasicParsing; Write-Host '✅ Batch installer downloaded' } catch { Write-Host '❌ Failed to download Batch installer' }"
 )
 
 echo.
