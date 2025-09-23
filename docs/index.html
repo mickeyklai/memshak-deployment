@@ -52,42 +52,55 @@
             content: "✅ ";
             margin-right: 8px;
         }
+        .warning-box {
+            background: rgba(255,193,7,0.2);
+            border: 2px solid rgba(255,193,7,0.6);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        .warning-box h3 {
+            color: #ffc107;
+            margin-top: 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🏥 Memshak System Installer</h1>
-        <p>Professional healthcare management system - One-click installation</p>
+        <p>Professional healthcare management system with automatic prerequisite installation</p>
         
-        <a href="memshak-installer.bat" class="download-btn" download="memshak-installer.bat">
-            🚀 Download Installer
+        <a href="INSTALL-MEMSHAK.bat" class="download-btn" download="INSTALL-MEMSHAK.bat">
+            🚀 Download Enhanced Installer
         </a>
         
         <div class="info-box">
             <h3>📋 Quick Start:</h3>
             <ol>
                 <li>Click the download button above</li>
-                <li>Right-click the downloaded file → "Run as administrator"</li>
-                <li>Follow the prompts - everything is automated!</li>
-                <li>Access your system at <strong>https://localhost:8443</strong></li>
+                <li><strong>Simply double-click</strong> the downloaded file</li>
+                <li>Administrator privileges will be automatically requested</li>
+                <li>Everything is fully automated - no manual steps!</li>
+                <li>Access your system at <strong>http://localhost:4200</strong></li>
             </ol>
         </div>
         
         <div class="info-box">
-            <h3>✨ What you get:</h3>
-            <div class="feature">Complete Docker-based deployment</div>
-            <div class="feature">SSL certificates for secure HTTPS</div>
-            <div class="feature">PowerShell authentication server</div>
-            <div class="feature">Automatic system startup</div>
-            <div class="feature">Professional healthcare interface</div>
+            <h3>✨ What gets installed automatically:</h3>
+            <div class="feature">Chocolatey Package Manager</div>
+            <div class="feature">PowerShell 7 (latest version)</div>
+            <div class="feature">WSL2 (Windows Subsystem for Linux)</div>
+            <div class="feature">Docker Desktop with auto-startup</div>
+            <div class="feature">Complete Memshak healthcare system</div>
+            <div class="feature">Desktop & Start Menu shortcuts</div>
         </div>
         
-        <div class="info-box">
-            <h3>🖥️ Requirements:</h3>
-            <div class="feature">Windows 10/11</div>
-            <div class="feature">PowerShell 7</div>
-            <div class="feature">Docker Desktop</div>
-            <div class="feature">Administrator privileges (recommended)</div>
+        <div class="warning-box">
+            <h3>⚠️ System Requirements</h3>
+            <p><strong>Windows 10/11 with Administrator privileges</strong></p>
+            <p>All prerequisites installed automatically - no manual setup required!</p>
+            <p>System restart may be required for WSL2 and Docker</p>
         </div>
         
         <p style="margin-top: 30px; font-size: 14px; opacity: 0.8;">
