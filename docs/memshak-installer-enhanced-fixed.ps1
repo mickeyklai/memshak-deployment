@@ -145,7 +145,7 @@ function Install-WSL {
     Write-Info "Checking for WSL (Windows Subsystem for Linux) - Required for Docker Desktop..."
     
     try {
-        $wslStatus = wsl --status 2>$null
+        wsl --status 2>$null | Out-Null
         Write-Success "WSL already installed and functional"
         return $true
     }
@@ -191,7 +191,7 @@ function Install-DockerDesktop {
         Write-Success "Docker Desktop already installed ($dockerVersion)"
         
         # Configure for startup
-        Configure-DockerStartup
+        Set-DockerStartup
         return $true
     }
     catch {
@@ -216,7 +216,7 @@ function Install-DockerDesktop {
             Write-Success "Docker Desktop installed successfully"
             
             # Configure Docker startup
-            Configure-DockerStartup
+            Set-DockerStartup
             
             # Start Docker Desktop
             Write-Info "Starting Docker Desktop..."
@@ -237,7 +237,7 @@ function Install-DockerDesktop {
 }
 
 # Function to configure Docker for automatic startup
-function Configure-DockerStartup {
+function Set-DockerStartup {
     Write-Info "Configuring Docker for automatic startup..."
     
     try {
