@@ -11,11 +11,12 @@ echo.
 echo This installer will automatically install:
 echo ✅ Chocolatey Package Manager  
 echo ✅ PowerShell 7
-echo ✅ Docker Desktop (architecture-aware)
+echo ✅ Docker Desktop (~500-600MB download)
 echo ✅ WSL (Windows Subsystem for Linux)
 echo ✅ Memshak Application System
 echo.
 echo 💻 Supports: x64/AMD64 and ARM64 architectures
+echo ⚠️  Total download size: ~600MB+ (mainly Docker Desktop)
 echo.
 
 REM Check if we're running as administrator
@@ -75,11 +76,9 @@ echo.
 
 REM Function to install Chocolatey
 echo 🔍 Checking for Chocolatey package manager...
-timeout /t 2 >nul
 choco --version >nul 2>&1
 if errorlevel 1 (
     echo ⚠️  Chocolatey not found. Installing Chocolatey...
-    timeout /t 2 >nul
     
     REM Install Chocolatey using PowerShell
     powershell -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))"
@@ -94,12 +93,10 @@ if errorlevel 1 (
     
     REM Refresh PATH environment variable to include Chocolatey
     echo 🔍 Refreshing environment variables...
-    timeout /t 2 >nul
     
     REM Simple approach - just add Chocolatey to current PATH
     set "PATH=%PATH%;%ALLUSERSPROFILE%\chocolatey\bin"
     echo 🔍 Chocolatey added to PATH for current session
-    timeout /t 2 >nul
     
     REM Verify Chocolatey is now accessible
     choco --version >nul 2>&1
@@ -113,23 +110,21 @@ if errorlevel 1 (
     )
     
     echo ✅ Chocolatey installed successfully and PATH updated
-    timeout /t 2 >nul
 ) else (
     echo ✅ Chocolatey already installed
-    timeout /t 2 >nul
 )
 
 REM Check PowerShell 7
 echo 🔍 Checking for PowerShell 7...
- timeout /t 2 >nul
+ 
 pwsh --version >nul 2>&1
 if errorlevel 1 (
     echo ⚠️  PowerShell 7 not found. Installing via Chocolatey...
-    timeout /t 2 >nul
+    
     choco install powershell-core -y --no-progress
     if errorlevel 1 (
         echo ❌ Failed to install PowerShell 7
-        timeout /t 2 >nul
+        
         echo.
         echo Press any key to exit...
         pause >nul
@@ -138,32 +133,32 @@ if errorlevel 1 (
     
     REM PowerShell 7 should now be available in PATH after Chocolatey installation
     echo 🔍 PowerShell 7 should now be available via Chocolatey PATH updates
-    timeout /t 2 >nul
+    
     
     echo ✅ PowerShell 7 installed successfully
-    timeout /t 2 >nul
+    
 ) else (
     echo ✅ PowerShell 7 already installed
-    timeout /t 2 >nul
+    
 )
 
 REM Check WSL
 echo 🔍 Checking for WSL (Windows Subsystem for Linux)...
-timeout /t 2 >nul
+
 
 echo 🔍 Starting WSL detection process (using crash-safe methods)...
-timeout /t 1 >nul
+
 
 REM Check for WSL using safer methods that won't crash the script
 echo 🔍 Testing WSL availability using safe detection methods...
-timeout /t 1 >nul
+
 
 REM Method 1: Check if WSL executable exists in system PATH
 set "WSL_AVAILABLE=1"
 set "WSL_CONFIGURED=1"
 
 echo 🔍 [DEBUG] About to check for wsl.exe in System32...
-timeout /t 1 >nul
+
 
 REM Check if wsl.exe exists in System32
 if exist "%SystemRoot%\System32\wsl.exe" (
@@ -172,14 +167,14 @@ if exist "%SystemRoot%\System32\wsl.exe" (
     
     REM Check WSL configuration using registry and file system (completely safe)
     echo 🔍 Checking WSL configuration status using safe methods...
-    timeout /t 1 >nul
+    
     
     REM Check if any WSL distributions are installed by looking at registry
     set "WSL_CONFIGURED=1"
     
     REM Method 1: Check WSL distribution registry entries
     echo 🔍 [DEBUG] About to check WSL registry entries...
-    timeout /t 1 >nul
+    
     
     reg query "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss" >nul 2>&1
     if not errorlevel 1 (
@@ -187,9 +182,9 @@ if exist "%SystemRoot%\System32\wsl.exe" (
         set "WSL_CONFIGURED=0"
     ) else (
         echo 🔍 [DEBUG] WSL registry check completed, no entries found
-        timeout /t 1 >nul
+        
         echo 🔍 [DEBUG] About to check AppData for WSL distributions...
-        timeout /t 1 >nul
+        
         
         REM Method 2: Check AppData for WSL distributions using DIR command (safer than wildcards)
         dir "%USERPROFILE%\AppData\Local\Packages\" 2>nul | find /i "Ubuntu" >nul 2>&1
@@ -213,7 +208,7 @@ if exist "%SystemRoot%\System32\wsl.exe" (
         )
         
         echo 🔍 [DEBUG] AppData WSL distribution check completed
-        timeout /t 1 >nul
+        
     )
     
     if !WSL_CONFIGURED! equ 0 (
@@ -226,12 +221,12 @@ if exist "%SystemRoot%\System32\wsl.exe" (
 )
 
 echo 🔍 [DEBUG] WSL detection method 1 completed successfully
-timeout /t 1 >nul
+
 
 REM Method 2: Check Windows features for WSL (alternative detection)
 if !WSL_AVAILABLE! neq 0 (
     echo 🔍 Checking Windows optional features for WSL...
-    timeout /t 1 >nul
+    
     
     REM Use DISM to check if WSL feature is installed
     dism /online /get-featureinfo /featurename:Microsoft-Windows-Subsystem-Linux 2>nul | find /i "State : Enabled" >nul 2>&1
@@ -242,77 +237,77 @@ if !WSL_AVAILABLE! neq 0 (
 )
 
 echo 🔍 [DEBUG] WSL detection method 2 completed successfully
-timeout /t 1 >nul
+
 
 echo 🔍 [DEBUG] About to evaluate WSL_CONFIGURED status: !WSL_CONFIGURED!
-timeout /t 1 >nul
+
 
 echo 🔍 [DEBUG] WSL_CONFIGURED variable value before if statement: !WSL_CONFIGURED!
-timeout /t 1 >nul
+
 
 echo 🔍 [DEBUG] About to check WSL_CONFIGURED value...
-timeout /t 1 >nul
+
 
 REM Use GOTO instead of IF to avoid any potential crashes with delayed expansion
 echo 🔍 [DEBUG] WSL_CONFIGURED value is: !WSL_CONFIGURED!
-timeout /t 1 >nul
+
 
 if "!WSL_CONFIGURED!"=="0" goto wsl_already_configured
 goto wsl_needs_installation
 
 :wsl_already_configured
 echo 🔍 [DEBUG] WSL already configured - skipping installation
-timeout /t 1 >nul
+
 echo ✅ WSL already installed and functional
-timeout /t 1 >nul
+
 goto wsl_section_complete
 
 :wsl_needs_installation
 echo 🔍 [DEBUG] WSL needs installation - proceeding with setup
-    timeout /t 1 >nul
+    
     echo ⚠️  WSL not found or not configured. Installing WSL2 (required for Docker Desktop)...
-    timeout /t 2 >nul
+    
     
     REM Enable WSL features using safer DISM commands
     echo 🔍 Enabling WSL Windows features (this may take a few minutes)...
-    timeout /t 2 >nul
+    
     
     echo 🔍 Enabling Windows Subsystem for Linux feature...
     dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart >nul 2>&1
-    timeout /t 2 >nul
+    
     
     echo 🔍 Enabling Virtual Machine Platform feature...
     dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart >nul 2>&1
-    timeout /t 2 >nul
+    
     
     REM Install WSL2 kernel via Chocolatey
     echo 🔍 Installing WSL2 kernel and components via Chocolatey...
-    timeout /t 2 >nul
+    
     choco install wsl2 -y --no-progress
     if errorlevel 1 (
         echo ⚠️  Chocolatey WSL2 installation had issues, but features were enabled
         echo 💡 WSL2 kernel update may be required after restart
     )
-    timeout /t 2 >nul
+    
     
     REM Set WSL2 as default version via registry (completely safe method)
     echo 🔍 Setting WSL2 as default version via registry...
-    timeout /t 1 >nul
+    
     reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss" /v DefaultVersion /t REG_DWORD /d 2 /f >nul 2>&1
     if errorlevel 1 (
         echo ⚠️  WSL2 registry setting had issues, but will work after restart
     ) else (
         echo ✅ WSL2 default version configured via registry successfully
     )
-    timeout /t 1 >nul
+    
     
     echo ✅ WSL2 installation and configuration completed
     echo ⚠️  IMPORTANT: A system restart is required for WSL2 to be fully functional
-    timeout /t 2 >nul
+    
 
 :wsl_section_complete
 echo 🔍 WSL detection and configuration completed successfully
-timeout /t 2 >nul
+
 
 REM Check Docker Desktop
 echo 🔍 Checking for Docker Desktop...
@@ -322,21 +317,12 @@ if errorlevel 1 goto :install_docker
 goto :docker_already_installed
 
 :install_docker
-echo ⚠️  Docker not found. Installing Docker Desktop via Chocolatey...
+echo ⚠️  Docker not found. Installing Docker Desktop via direct download...
 echo 🔍 Note: Docker Desktop requires WSL2 which should now be installed
 timeout /t 2 >nul
 
-echo 🔍 Attempting Docker Desktop installation via Chocolatey (method 1/4)...
-choco install docker-desktop -y --no-progress --ignore-checksums
-if errorlevel 1 goto :docker_choco_alternative
-goto :docker_choco_success
-
-:docker_choco_alternative
-echo ⚠️  Standard Chocolatey installation failed, trying alternative Chocolatey method...
-timeout /t 2 >nul
-choco install docker-desktop -y --force --ignore-checksums --allow-empty-checksums
-if errorlevel 1 goto :docker_manual_install
-goto :docker_choco_success
+echo 🔍 Attempting Docker Desktop installation via direct download (method 1/4)...
+goto :docker_manual_install
 
 :docker_manual_install
 echo ❌ Chocolatey Docker installation failed. Trying direct download method (method 2/4)...
@@ -346,52 +332,72 @@ REM Try downloading and installing Docker manually with enhanced error handling
 echo 🔍 Detecting system architecture for direct download...
 timeout /t 1 >nul
         
-        REM Detect system architecture
+        REM Detect system architecture (simplified)
         set "ARCH=amd64"
-        for /f "tokens=2 delims==" %%i in ('wmic os get osarchitecture /value 2^>nul ^| find "="') do (
-            set "OS_ARCH=%%i"
+        set "ARCH_PATH=amd64"
+        echo 🔍 Using AMD64 architecture for Docker Desktop (most compatible)
+        
+        echo 🔍 Preparing to download Docker Desktop for AMD64 architecture...
+        echo ⚠️  WARNING: Docker Desktop installer is approximately 500-600MB
+        echo 💾 This will use significant bandwidth and disk space
+        echo.
+        set /p "download_docker=Continue with Docker Desktop download? (y/n): "
+        
+        REM Use GOTO to avoid variable expansion crashes
+        if /i "!download_docker!"=="y" goto :proceed_with_docker_download
+        if /i "!download_docker!"=="yes" goto :proceed_with_docker_download
+        goto :skip_docker_download
+
+:skip_docker_download
+        echo ⏭️  Skipping Docker Desktop automatic download
+        echo 💡 You can install Docker Desktop manually later from:
+        echo    🌐 https://www.docker.com/products/docker-desktop
+        timeout /t 2 >nul
+        goto :docker_section_complete
+
+:proceed_with_docker_download
+        
+        echo 🔍 Starting Docker Desktop download (this may take several minutes)...
+        timeout /t 2 >nul
+        set "DOCKER_URL=https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe"
+        set "DOCKER_INSTALLER=docker-desktop-installer-amd64.exe"
+        
+        REM Check if installer already exists
+        if exist "%DOCKER_INSTALLER%" (
+            echo ✅ Docker installer already exists, verifying file...
+            REM Check file size to ensure it's not corrupted
+             timeout /t 2 >nul
+            for %%A in ("%DOCKER_INSTALLER%") do set "FILE_SIZE=%%~zA"
+            if !FILE_SIZE! gtr 400000000 (
+                echo ✅ Existing Docker installer appears valid (size: !FILE_SIZE! bytes)
+                echo 🔍 Skipping download, using existing installer...
+                 timeout /t 2 >nul
+                goto :docker_downloaded_success
+            ) else (
+                echo ⚠️  Existing installer seems too small (!FILE_SIZE! bytes), re-downloading...
+                 timeout /t 2 >nul
+                del "%DOCKER_INSTALLER%" >nul 2>&1
+            )
         )
         
-        REM Check for ARM64 architecture
-        echo %PROCESSOR_ARCHITECTURE% | find /i "ARM64" >nul 2>&1
-        if not errorlevel 1 goto :set_arm64_arch
-        echo %OS_ARCH% | find /i "ARM64" >nul 2>&1
-        if not errorlevel 1 goto :set_arm64_arch
-        goto :set_amd64_arch
-
-:set_arm64_arch
-        set "ARCH=arm64"
-        echo 🔍 Detected ARM64 architecture
-        goto :arch_detected
-
-:set_amd64_arch
-        echo 🔍 Detected x64/AMD64 architecture
-        goto :arch_detected
-
-:arch_detected
-        
-        echo 🔍 Downloading Docker Desktop for !ARCH! architecture...
-        set "DOCKER_URL=https://desktop.docker.com/win/main/!ARCH!/Docker%%20Desktop%%20Installer.exe"
-        set "DOCKER_INSTALLER=docker-desktop-installer-!ARCH!.exe"
-        
-        echo 🔍 Attempting download method 1: PowerShell with TLS security...
-        powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { $ProgressPreference='SilentlyContinue'; $arch='!ARCH!'; Invoke-WebRequest -Uri 'https://desktop.docker.com/win/main/$arch/Docker Desktop Installer.exe' -OutFile '%DOCKER_INSTALLER%' -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' -UseBasicParsing -TimeoutSec 180 } catch { Write-Host 'Download method 1 failed:' $_.Exception.Message; exit 1 }"
+        echo 🔍 Attempting download method 1: Simple PowerShell download...
+        powershell -Command "Invoke-WebRequest -Uri 'https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe' -OutFile '%DOCKER_INSTALLER%'" 2>nul
         
         if exist "%DOCKER_INSTALLER%" goto :docker_downloaded_success
         
-        echo 🔍 Attempting download method 2: PowerShell with different approach...
-        powershell -Command "try { $webClient = New-Object System.Net.WebClient; $webClient.Headers.Add('User-Agent', 'Memshak-Installer/2.0'); $arch='!ARCH!'; $webClient.DownloadFile('https://desktop.docker.com/win/main/$arch/Docker Desktop Installer.exe', '%DOCKER_INSTALLER%') } catch { Write-Host 'Download method 2 failed:' $_.Exception.Message; exit 1 }"
+        echo 🔍 Attempting download method 2: PowerShell with basic parameters...
+        powershell -Command "$client = New-Object System.Net.WebClient; $client.DownloadFile('https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe', '%DOCKER_INSTALLER%')" 2>nul
         
         if exist "%DOCKER_INSTALLER%" goto :docker_downloaded_success
         
         echo 🔍 Attempting download method 3: Using CURL (if available)...
-        curl -L -o "%DOCKER_INSTALLER%" --user-agent "Memshak-Installer/3.0" --connect-timeout 60 --max-time 300 "https://desktop.docker.com/win/main/!ARCH!/Docker Desktop Installer.exe" >nul 2>&1
+        curl -L -o "%DOCKER_INSTALLER%" "https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe" >nul 2>&1
         
         if exist "%DOCKER_INSTALLER%" goto :docker_downloaded_success
         goto :docker_download_failed
 
 :docker_downloaded_success
-        echo ✅ Docker Desktop downloaded successfully (!ARCH! architecture)
+        echo ✅ Docker Desktop downloaded successfully (AMD64 architecture)
         echo 🔍 Installing Docker Desktop...
         timeout /t 2 >nul
         
@@ -479,57 +485,95 @@ goto :docker_startup_complete
 goto :end_docker_manual_install
 
 :docker_download_failed
-echo ❌ Failed to download Docker Desktop installer for !ARCH! architecture
-
-REM Try fallback to AMD64 if ARM64 failed
-echo !ARCH! | find "arm64" >nul 2>&1
-if not errorlevel 1 goto :try_amd64_fallback
-goto :all_docker_downloads_failed
+echo ❌ Failed to download Docker Desktop installer via direct download
+echo 🔍 Trying alternative download method...
+goto :try_amd64_fallback
 
 :try_amd64_fallback
 echo 🔍 Trying fallback to AMD64 architecture (method 3/4)...
 set "ARCH=amd64"
 set "DOCKER_INSTALLER=docker-desktop-installer-amd64.exe"
 
-echo 🔍 AMD64 fallback - PowerShell download attempt 1...
-powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe' -OutFile '%DOCKER_INSTALLER%' -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' -UseBasicParsing -TimeoutSec 180 } catch { exit 1 }"
+echo 🔍 AMD64 fallback - Simple PowerShell download...
+powershell -Command "Invoke-WebRequest -Uri 'https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe' -OutFile '%DOCKER_INSTALLER%'" 2>nul
 
 if exist "%DOCKER_INSTALLER%" goto :amd64_fallback_success
 
-echo 🔍 AMD64 fallback - WebClient download attempt 2...
-powershell -Command "try { $webClient = New-Object System.Net.WebClient; $webClient.Headers.Add('User-Agent', 'Memshak-Installer/2.0'); $webClient.DownloadFile('https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe', '%DOCKER_INSTALLER%') } catch { exit 1 }"
+echo 🔍 AMD64 fallback - WebClient download...
+powershell -Command "$client = New-Object System.Net.WebClient; $client.DownloadFile('https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe', '%DOCKER_INSTALLER%')" 2>nul
 
 if exist "%DOCKER_INSTALLER%" goto :amd64_fallback_success
 
-echo 🔍 AMD64 fallback - CURL download attempt 3...
-curl -L -o "%DOCKER_INSTALLER%" --user-agent "Memshak-Installer/3.0" --connect-timeout 60 --max-time 300 "https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe" >nul 2>&1
+echo 🔍 AMD64 fallback - CURL download...
+curl -L -o "%DOCKER_INSTALLER%" "https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe" >nul 2>&1
 
 if exist "%DOCKER_INSTALLER%" goto :amd64_fallback_success
 goto :winget_install_attempt
 
 :amd64_fallback_success
-echo ✅ AMD64 fallback download successful
-echo ⚠️  Note: Running AMD64 Docker on ARM64 may have performance impact
+echo ✅ Alternative download method successful
 goto :docker_downloaded_success
 
 :winget_install_attempt
-echo 🔍 Trying Winget package manager installation (method 4/4)...
+echo 🔍 Trying Winget package manager installation (method 3/4)...
 timeout /t 2 >nul
 
 REM Check if winget is available
 winget --version >nul 2>&1
-if errorlevel 1 goto :all_docker_install_methods_failed
+if errorlevel 1 goto :chocolatey_fallback_attempt
 
 echo 🔍 Attempting Docker Desktop installation via Winget...
 winget install Docker.DockerDesktop --accept-source-agreements --accept-package-agreements --silent >nul 2>&1
-if errorlevel 1 goto :all_docker_install_methods_failed
+if errorlevel 1 goto :chocolatey_fallback_attempt
 
 echo ✅ Docker Desktop installed successfully via Winget
 timeout /t 2 >nul
-goto :configure_docker
+
+REM Verify Winget installation worked
+echo 🔍 Verifying Winget Docker installation...
+timeout /t 5 >nul
+if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :configure_docker
+
+echo ⚠️  Winget installation completed but Docker executable not found, trying next method...
+goto :chocolatey_fallback_attempt
+
+:chocolatey_fallback_attempt
+echo 🔍 Trying Chocolatey package manager installation (method 4/4)...
+timeout /t 2 >nul
+
+echo 🔍 Attempting Docker Desktop installation via Chocolatey (standard)...
+choco install docker-desktop -y --no-progress --ignore-checksums >nul 2>&1
+if errorlevel 1 goto :docker_choco_alternative_fallback
+
+echo ✅ Docker Desktop installed successfully via Chocolatey
+timeout /t 2 >nul
+
+REM Verify Chocolatey installation worked
+echo 🔍 Verifying Chocolatey Docker installation...
+timeout /t 5 >nul
+if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :configure_docker
+
+echo ⚠️  Chocolatey installation completed but Docker executable not found, trying alternative method...
+goto :docker_choco_alternative_fallback
+
+:docker_choco_alternative_fallback
+echo 🔍 Trying alternative Chocolatey method...
+choco install docker-desktop -y --force --ignore-checksums --allow-empty-checksums >nul 2>&1
+if errorlevel 1 goto :all_docker_install_methods_failed
+
+echo ✅ Docker Desktop installed successfully via Chocolatey (alternative method)
+timeout /t 2 >nul
+
+REM Verify alternative Chocolatey installation worked
+echo 🔍 Verifying alternative Chocolatey Docker installation...
+timeout /t 5 >nul
+if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :configure_docker
+
+echo ⚠️  All Chocolatey methods completed but Docker executable not found
+goto :all_docker_install_methods_failed
 
 :all_docker_install_methods_failed
-echo ❌ All Docker installation methods failed (Chocolatey, Direct Download, Winget)
+echo ❌ All Docker installation methods failed (Direct Download, AMD64 Fallback, Winget, Chocolatey)
 echo.
 echo 💡 MANUAL INSTALLATION REQUIRED:
 echo.
