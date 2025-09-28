@@ -2,6 +2,9 @@
 REM Memshak Complete Installer - Standalone Batch Version
 REM This script installs everything needed for Memshak without external files
 
+REM Set UTF-8 encoding to properly display emojis and special characters
+chcp 65001 >nul 2>&1
+
 setlocal EnableDelayedExpansion
 
 echo ==========================================
@@ -60,7 +63,8 @@ echo Installation directory: %INSTALL_DIR%
 
 if exist "%INSTALL_DIR%" (
     echo ⚠️  Installation directory already exists
-    set /p "overwrite=Continue anyway? (y/n): "
+    set /p "overwrite=Continue anyway? (Y/n) [default: Y]: "
+    if "!overwrite!"=="" set "overwrite=y"
     if /i not "!overwrite!"=="y" (
         echo Installation cancelled
         echo.
@@ -80,8 +84,8 @@ choco --version >nul 2>&1
 if errorlevel 1 (
     echo ⚠️  Chocolatey not found. Installing Chocolatey...
     
-    REM Install Chocolatey using PowerShell
-    powershell -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))"
+    REM Install Chocolatey using PowerShell with enhanced network handling
+    powershell -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = 'Tls12,Tls11,Tls,Ssl3'; [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}; try { iex (Invoke-WebRequest -UseBasicParsing -Uri 'https://community.chocolatey.org/install.ps1' -TimeoutSec 30).Content } catch { Write-Host 'Fallback method'; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')) }"
     
     if errorlevel 1 (
         echo ❌ Failed to install Chocolatey
@@ -273,11 +277,75 @@ echo 🔍 [DEBUG] WSL needs installation - proceeding with setup
     
     
     echo 🔍 Enabling Windows Subsystem for Linux feature...
-    dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart >nul 2>&1
+    dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+    if errorlevel 1 (
+        echo ⚠️  Warning: WSL feature enable had issues but continuing...
+    ) else (
+        echo ✅ Windows Subsystem for Linux feature enabled successfully
+    )
     
     
     echo 🔍 Enabling Virtual Machine Platform feature...
-    dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart >nul 2>&1
+    dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+    if errorlevel 1 (
+        echo ⚠️  Warning: Virtual Machine Platform enable had issues but continuing...
+    ) else (
+        echo ✅ Virtual Machine Platform feature enabled successfully
+    )
+    
+    
+    echo 🔍 Enabling Windows Hypervisor Platform feature (required for Docker Desktop)...
+    echo 🔍 Method 1: Using DISM with HypervisorPlatform feature name...
+    dism.exe /online /enable-feature /featurename:HypervisorPlatform /all /norestart
+    set "HYPERV_RESULT1=%ERRORLEVEL%"
+    
+    if !HYPERV_RESULT1! neq 0 (
+        echo 🔍 Method 2: Using DISM with Microsoft-Hyper-V-Hypervisor feature name...
+        dism.exe /online /enable-feature /featurename:Microsoft-Hyper-V-Hypervisor /all /norestart
+        set "HYPERV_RESULT2=%ERRORLEVEL%"
+    ) else (
+        echo ✅ Windows Hypervisor Platform enabled successfully (Method 1)
+        set "HYPERV_RESULT2=0"
+    )
+    
+    if !HYPERV_RESULT1! neq 0 if !HYPERV_RESULT2! neq 0 (
+        echo 🔍 Method 3: Using PowerShell Enable-WindowsOptionalFeature...
+        powershell -Command "Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All -NoRestart" >nul 2>&1
+        set "HYPERV_RESULT3=%ERRORLEVEL%"
+        
+        if !HYPERV_RESULT3! neq 0 (
+            echo 🔍 Method 4: Using PowerShell with Microsoft-Hyper-V-Hypervisor...
+            powershell -Command "Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-Hypervisor -All -NoRestart" >nul 2>&1
+            set "HYPERV_RESULT4=%ERRORLEVEL%"
+            
+            if !HYPERV_RESULT4! neq 0 (
+                echo 🔍 Method 5: Using bcdedit to enable hypervisor...
+                bcdedit /set hypervisorlaunchtype auto >nul 2>&1
+                set "HYPERV_RESULT5=%ERRORLEVEL%"
+                
+                if !HYPERV_RESULT5! equ 0 (
+                    echo ✅ Hypervisor launch type set to auto via bcdedit
+                ) else (
+                    echo ⚠️  All automatic methods failed - manual intervention may be required
+                    echo 💡 Please manually enable "Windows Hypervisor Platform" in:
+                    echo    Control Panel → Programs → Turn Windows features on or off
+                )
+            ) else (
+                echo ✅ Windows Hypervisor Platform enabled successfully (Method 4)
+            )
+        ) else (
+            echo ✅ Windows Hypervisor Platform enabled successfully (Method 3)
+        )
+    )
+    
+    
+    echo 🔍 Enabling Hyper-V (if available on this Windows edition)...
+    dism.exe /online /enable-feature /featurename:Microsoft-Hyper-V /all /norestart >nul 2>&1
+    if errorlevel 1 (
+        echo ⚠️  Hyper-V not available (normal for Windows Home edition)
+    ) else (
+        echo ✅ Hyper-V feature enabled successfully
+    )
     
     
     REM Install WSL2 kernel via Chocolatey
@@ -288,6 +356,65 @@ echo 🔍 [DEBUG] WSL needs installation - proceeding with setup
         echo ⚠️  Chocolatey WSL2 installation had issues, but features were enabled
         echo 💡 WSL2 kernel update may be required after restart
     )
+    
+    
+    REM Verify Windows features are enabled
+    echo 🔍 Verifying Windows features for Docker Desktop compatibility...
+    echo.
+    echo 🔍 Checking required Windows features status:
+    
+    REM Check WSL feature
+    dism /online /get-featureinfo /featurename:Microsoft-Windows-Subsystem-Linux 2>nul | find /i "State : Enabled" >nul 2>&1
+    if not errorlevel 1 (
+        echo ✅ Windows Subsystem for Linux: ENABLED
+    ) else (
+        echo ❌ Windows Subsystem for Linux: DISABLED
+    )
+    
+    REM Check Virtual Machine Platform
+    dism /online /get-featureinfo /featurename:VirtualMachinePlatform 2>nul | find /i "State : Enabled" >nul 2>&1
+    if not errorlevel 1 (
+        echo ✅ Virtual Machine Platform: ENABLED
+    ) else (
+        echo ❌ Virtual Machine Platform: DISABLED
+    )
+    
+    REM Check Hypervisor Platform (try multiple feature names)
+    set "HYPERV_ENABLED=0"
+    
+    dism /online /get-featureinfo /featurename:HypervisorPlatform 2>nul | find /i "State : Enabled" >nul 2>&1
+    if not errorlevel 1 set "HYPERV_ENABLED=1"
+    
+    if !HYPERV_ENABLED! equ 0 (
+        dism /online /get-featureinfo /featurename:Microsoft-Hyper-V-Hypervisor 2>nul | find /i "State : Enabled" >nul 2>&1
+        if not errorlevel 1 set "HYPERV_ENABLED=1"
+    )
+    
+    if !HYPERV_ENABLED! equ 1 (
+        echo ✅ Windows Hypervisor Platform: ENABLED
+    ) else (
+        echo ❌ Windows Hypervisor Platform: DISABLED
+        echo 💡 MANUAL FIX REQUIRED for Windows Hypervisor Platform:
+        echo    1. Press Win+R, type 'optionalfeatures' and press Enter
+        echo    2. Find and check ☑️ "Windows Hypervisor Platform"
+        echo    3. Click OK and restart when prompted
+        echo    4. Alternative: Run as Administrator: dism /online /enable-feature /featurename:HypervisorPlatform /all
+    )
+    
+    REM Check Hyper-V (optional, may not be available on all editions)
+    dism /online /get-featureinfo /featurename:Microsoft-Hyper-V 2>nul | find /i "State : Enabled" >nul 2>&1
+    if not errorlevel 1 (
+        echo ✅ Hyper-V: ENABLED
+    ) else (
+        echo ⚠️  Hyper-V: DISABLED (may not be available on Windows Home)
+    )
+    
+    echo.
+    echo 💡 NOTE: If any required features show as DISABLED, please:
+    echo    1. Restart your computer after installation completes
+    echo    2. Manually enable missing features in "Turn Windows features on or off"
+    echo    3. Required features: WSL, Virtual Machine Platform, Hypervisor Platform
+    echo.
     
     
     REM Set WSL2 as default version via registry (completely safe method)
@@ -317,12 +444,18 @@ if errorlevel 1 goto :install_docker
 goto :docker_already_installed
 
 :install_docker
-echo ⚠️  Docker not found. Installing Docker Desktop via direct download...
+echo ⚠️  Docker not found. Installing Docker Desktop...
 echo 🔍 Note: Docker Desktop requires WSL2 which should now be installed
 timeout /t 2 >nul
 
-echo 🔍 Attempting Docker Desktop installation via direct download (method 1/4)...
-goto :docker_manual_install
+echo 🔍 Attempting Docker Desktop installation via Chocolatey (method 1/4)...
+choco install docker-desktop -y --no-progress --ignore-checksums
+if errorlevel 1 goto :docker_manual_install
+
+echo ✅ Docker Desktop installed successfully via Chocolatey
+echo 🔄 Refreshing PATH environment variable...
+call refreshenv
+goto :docker_section_complete
 
 :docker_manual_install
 echo ❌ Chocolatey Docker installation failed. Trying direct download method (method 2/4)...
@@ -341,7 +474,10 @@ timeout /t 1 >nul
         echo ⚠️  WARNING: Docker Desktop installer is approximately 500-600MB
         echo 💾 This will use significant bandwidth and disk space
         echo.
-        set /p "download_docker=Continue with Docker Desktop download? (y/n): "
+        set /p "download_docker=Continue with Docker Desktop download? (Y/n) [default: Y]: "
+        
+        REM Set default to y if user just pressed Enter
+        if "!download_docker!"=="" set "download_docker=y"
         
         REM Use GOTO to avoid variable expansion crashes
         if /i "!download_docker!"=="y" goto :proceed_with_docker_download
@@ -357,28 +493,61 @@ timeout /t 1 >nul
 
 :proceed_with_docker_download
         
+        echo 🔍 Checking available disk space for Docker installation...
+        timeout /t 1 >nul
+        
+        REM Check free space on C: drive (Docker needs at least 4GB)
+        for /f "tokens=3" %%a in ('dir /-c "%SystemDrive%\" ^| find "bytes free"') do set "FREE_SPACE=%%a"
+        REM Remove commas from the number
+        set "FREE_SPACE=!FREE_SPACE:,=!"
+        
+        REM Check if we have at least 4GB (4,294,967,296 bytes) free
+        if !FREE_SPACE! lss 4294967296 (
+            echo ❌ Insufficient disk space for Docker Desktop installation
+            echo 💾 Available: !FREE_SPACE! bytes
+            echo 📋 Required: At least 4GB (4,294,967,296 bytes) free space
+            echo.
+            echo 💡 Please free up disk space and run the installer again
+            echo    - Delete temporary files
+            echo    - Empty Recycle Bin  
+            echo    - Run Disk Cleanup
+            echo    - Uninstall unused programs
+            timeout /t 5 >nul
+            goto :docker_section_complete
+        )
+        
+        echo ✅ Sufficient disk space available (!FREE_SPACE! bytes free)
+        
         echo 🔍 Starting Docker Desktop download (this may take several minutes)...
         timeout /t 2 >nul
         set "DOCKER_URL=https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe"
         set "DOCKER_INSTALLER=docker-desktop-installer-amd64.exe"
         
         REM Check if installer already exists
-        if exist "%DOCKER_INSTALLER%" (
-            echo ✅ Docker installer already exists, verifying file...
-            REM Check file size to ensure it's not corrupted
-             timeout /t 2 >nul
-            for %%A in ("%DOCKER_INSTALLER%") do set "FILE_SIZE=%%~zA"
-            if !FILE_SIZE! gtr 400000000 (
-                echo ✅ Existing Docker installer appears valid (size: !FILE_SIZE! bytes)
-                echo 🔍 Skipping download, using existing installer...
-                 timeout /t 2 >nul
-                goto :docker_downloaded_success
-            ) else (
-                echo ⚠️  Existing installer seems too small (!FILE_SIZE! bytes), re-downloading...
-                 timeout /t 2 >nul
-                del "%DOCKER_INSTALLER%" >nul 2>&1
-            )
-        )
+        if exist "%DOCKER_INSTALLER%" goto :verify_existing_installer
+        goto :start_fresh_download
+
+:verify_existing_installer
+        echo ✅ Docker installer already exists, verifying file...
+        REM Check file size to ensure it's not corrupted
+        timeout /t 2 >nul
+        for %%A in ("%DOCKER_INSTALLER%") do set "FILE_SIZE=%%~zA"
+        if !FILE_SIZE! gtr 400000000 goto :existing_installer_valid
+        goto :existing_installer_invalid
+
+:existing_installer_valid
+        echo ✅ Existing Docker installer appears valid (size: !FILE_SIZE! bytes)
+        echo 🔍 Skipping download, using existing installer...
+        timeout /t 2 >nul
+        goto :docker_downloaded_success
+
+:existing_installer_invalid
+        echo ⚠️  Existing installer seems too small (!FILE_SIZE! bytes), re-downloading...
+        timeout /t 2 >nul
+        del "%DOCKER_INSTALLER%" >nul 2>&1
+        goto :start_fresh_download
+
+:start_fresh_download
         
         echo 🔍 Attempting download method 1: Simple PowerShell download...
         powershell -Command "Invoke-WebRequest -Uri 'https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe' -OutFile '%DOCKER_INSTALLER%'" 2>nul
@@ -403,36 +572,59 @@ timeout /t 1 >nul
         
         REM Verify file integrity before installation
         echo 🔍 Verifying installer integrity...
+        timeout /t 2 >nul
         if not exist "%DOCKER_INSTALLER%" (
             echo ❌ Installer file disappeared, download may have failed
+            timeout /t 2 >nul
             goto :docker_download_failed
         )
         
         REM Check file size (Docker installer should be at least 400MB)
+        echo 🔍 Checking installer file size...
+        timeout /t 1 >nul
+        
+        REM Get file size safely
         for %%A in ("%DOCKER_INSTALLER%") do set "FILE_SIZE=%%~zA"
-        if %FILE_SIZE% lss 400000000 (
-            echo ⚠️  Downloaded file seems too small (%FILE_SIZE% bytes), may be corrupted
-            echo 🔍 Attempting installation anyway...
-        )
+        
+        REM Check if FILE_SIZE is empty or invalid
+        if "!FILE_SIZE!"=="" goto :file_size_check_failed
+        if "!FILE_SIZE!"=="0" goto :file_size_too_small
+        
+        REM Use GOTO to avoid crashes with large number comparisons
+        if !FILE_SIZE! lss 400000000 goto :file_size_too_small
+        goto :file_size_check_passed
+
+:file_size_check_failed
+        echo ⚠️  Could not determine file size, proceeding with installation...
+        timeout /t 2 >nul
+        goto :file_size_check_passed
+
+:file_size_too_small
+        echo ⚠️  Downloaded file seems too small (!FILE_SIZE! bytes), may be corrupted
+        echo 🔍 Attempting installation anyway...
+        timeout /t 2 >nul
+        goto :file_size_check_passed
+
+:file_size_check_passed
         
         REM Try multiple installation methods
         echo 🔍 Installation attempt 1: Standard quiet install...
         "%DOCKER_INSTALLER%" install --quiet --accept-license >nul 2>&1
         set "DOCKER_EXIT_CODE=%ERRORLEVEL%"
         
-        if %DOCKER_EXIT_CODE% equ 0 goto :docker_install_success
+        if !DOCKER_EXIT_CODE! equ 0 goto :docker_install_success
         
         echo 🔍 Installation attempt 2: Alternative parameters...
         "%DOCKER_INSTALLER%" --quiet --accept-license >nul 2>&1
         set "DOCKER_EXIT_CODE=%ERRORLEVEL%"
         
-        if %DOCKER_EXIT_CODE% equ 0 goto :docker_install_success
+        if !DOCKER_EXIT_CODE! equ 0 goto :docker_install_success
         
         echo 🔍 Installation attempt 3: Without quiet mode...
         start /wait "" "%DOCKER_INSTALLER%" install --accept-license
         set "DOCKER_EXIT_CODE=%ERRORLEVEL%"
         
-        if %DOCKER_EXIT_CODE% equ 0 goto :docker_install_success
+        if !DOCKER_EXIT_CODE! equ 0 goto :docker_install_success
         goto :docker_install_warning
 
 :docker_install_success
@@ -487,6 +679,7 @@ goto :end_docker_manual_install
 :docker_download_failed
 echo ❌ Failed to download Docker Desktop installer via direct download
 echo 🔍 Trying alternative download method...
+timeout /t 2 >nul
 goto :try_amd64_fallback
 
 :try_amd64_fallback
@@ -838,7 +1031,8 @@ echo    • Run: docker-compose up -d
 echo    • Wait 2-3 minutes then try http://localhost:4200
 echo.
 
-set /p "restart=Would you like to restart now? (recommended) (y/n): "
+set /p "restart=Would you like to restart now? (recommended) (Y/n) [default: Y]: "
+if "!restart!"=="" set "restart=y"
 if /i "!restart!"=="y" (
     echo.
     echo 🔄 Restarting system in 10 seconds...
