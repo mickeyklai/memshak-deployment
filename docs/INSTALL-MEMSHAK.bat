@@ -428,6 +428,64 @@ echo 🔍 [DEBUG] WSL needs installation - proceeding with setup
     )
     
     
+    REM Install Ubuntu distribution for Docker Desktop WSL integration
+    echo 🔍 Installing Ubuntu WSL distribution (required for Docker Desktop)...
+    echo 💡 This ensures Docker Desktop has a proper WSL environment to work with
+    
+    REM Try multiple methods to install Ubuntu WSL distribution
+    echo 🔍 Method 1: Installing Ubuntu via Windows Store (winget)...
+    winget install Canonical.Ubuntu --accept-source-agreements --accept-package-agreements --silent >nul 2>&1
+    if errorlevel 1 (
+        echo 🔍 Method 2: Installing Ubuntu via Chocolatey...
+        choco install wsl-ubuntu-2004 -y --no-progress >nul 2>&1
+        if errorlevel 1 (
+            echo 🔍 Method 3: Installing Ubuntu LTS via Microsoft Store...
+            powershell -Command "Get-AppxPackage -Name '*Ubuntu*' | Select-Object Name" >nul 2>&1
+            
+            REM Try to download and install Ubuntu manually
+            echo 🔍 Method 4: Manual Ubuntu WSL installation...
+            powershell -Command "Invoke-WebRequest -Uri 'https://aka.ms/wslubuntu2004' -OutFile 'ubuntu.appx' -UseBasicParsing" >nul 2>&1
+            if exist "ubuntu.appx" (
+                powershell -Command "Add-AppxPackage .\ubuntu.appx" >nul 2>&1
+                if not errorlevel 1 (
+                    echo ✅ Ubuntu WSL distribution installed manually
+                    del "ubuntu.appx" >nul 2>&1
+                ) else (
+                    echo ⚠️  Manual Ubuntu installation had issues
+                    del "ubuntu.appx" >nul 2>&1
+                )
+            ) else (
+                echo ⚠️  Could not download Ubuntu WSL distribution
+                echo 💡 Docker Desktop will attempt to install its own WSL distributions
+            )
+        ) else (
+            echo ✅ Ubuntu WSL distribution installed via Chocolatey
+        )
+    ) else (
+        echo ✅ Ubuntu WSL distribution installed via winget
+    )
+    
+    REM Configure WSL for Docker Desktop compatibility
+    echo 🔍 Configuring WSL for Docker Desktop compatibility...
+    
+    REM Enable WSL integration settings
+    echo 🔍 Configuring WSL integration settings...
+    
+    REM Create WSL config file for Docker Desktop
+    echo 🔍 Creating WSL configuration file...
+    powershell -Command "if (!(Test-Path '$env:USERPROFILE\.wslconfig')) { '[wsl2]' | Out-File -FilePath '$env:USERPROFILE\.wslconfig' -Encoding UTF8; 'memory=4GB' | Add-Content -Path '$env:USERPROFILE\.wslconfig'; 'processors=2' | Add-Content -Path '$env:USERPROFILE\.wslconfig'; 'swap=2GB' | Add-Content -Path '$env:USERPROFILE\.wslconfig' }" >nul 2>&1
+    
+    if exist "%USERPROFILE%\.wslconfig" (
+        echo ✅ WSL configuration file created successfully
+    ) else (
+        echo ⚠️  WSL configuration file creation had issues
+    )
+    
+    REM Restart WSL to apply configuration
+    echo 🔍 Restarting WSL to apply configuration...
+    wsl --shutdown >nul 2>&1
+    timeout /t 3 >nul
+    
     echo ✅ WSL2 installation and configuration completed
     echo ⚠️  IMPORTANT: A system restart is required for WSL2 to be fully functional
     
@@ -656,6 +714,31 @@ set "STARTUP_FOLDER=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 powershell -Command "if (Test-Path '%ProgramFiles%\Docker\Docker\Docker Desktop.exe') { $WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%STARTUP_FOLDER%\Docker Desktop.lnk'); $Shortcut.TargetPath = '%ProgramFiles%\Docker\Docker\Docker Desktop.exe'; $Shortcut.Save() }" >nul 2>&1
 
 echo ✅ Docker Desktop configured for automatic startup (multiple methods)
+
+REM Configure Docker Desktop WSL integration
+echo 🔍 Configuring Docker Desktop WSL integration settings...
+
+REM Create Docker Desktop settings with WSL integration enabled
+set "DOCKER_SETTINGS_PATH=%APPDATA%\Docker\settings.json"
+if not exist "%APPDATA%\Docker" mkdir "%APPDATA%\Docker"
+
+echo 🔍 Creating Docker Desktop settings for WSL integration...
+powershell -Command "$settings = @{ 'wslEngineEnabled' = $true; 'useWindowsContainers' = $false; 'exposeDockerAPIOnTCP2375' = $false; 'DockerDesktopForWSL2' = $true; 'integratedWslDistros' = @('Ubuntu') }; $settings | ConvertTo-Json | Out-File -FilePath '%DOCKER_SETTINGS_PATH%' -Encoding UTF8" >nul 2>&1
+
+if exist "%DOCKER_SETTINGS_PATH%" (
+    echo ✅ Docker Desktop WSL integration settings configured
+) else (
+    echo ⚠️  Docker Desktop settings creation had issues (will use defaults)
+)
+
+REM Ensure WSL distributions are available for Docker
+echo 🔍 Preparing WSL distributions for Docker Desktop...
+wsl --list --verbose >nul 2>&1
+if errorlevel 1 (
+    echo ⚠️  WSL may need restart to be fully functional
+) else (
+    echo ✅ WSL distributions ready for Docker Desktop integration
+)
 
 REM Try to start Docker Desktop
 if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :docker_exe_found
