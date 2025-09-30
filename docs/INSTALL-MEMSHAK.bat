@@ -43,6 +43,30 @@ if errorlevel 1 (
 echo ✅ Running with Administrator privileges
 echo.
 
+REM Quick-start fast path: If Docker already installed and Memshak system present, offer to just start services
+docker --version >nul 2>&1
+if not errorlevel 1 if exist "%USERPROFILE%\memshak-system\start-local.bat" (
+    echo 🔍 Existing Docker installation and Memshak system detected.
+    echo.
+    echo Would you like to skip re-installation and just start Memshak services now?
+    set /p "quickstart=Quick Start Memshak now? (Y/n) [default: Y]: "
+    if "%quickstart%"=="" set "quickstart=Y"
+    if /i "%quickstart%"=="Y" (
+        echo.
+        echo 🚀 Launching Memshak services...
+        pushd "%USERPROFILE%\memshak-system"
+        if exist start-local.bat (
+            call start-local.bat
+            popd
+            goto :eof
+        ) else (
+            echo ⚠️  start-local.bat not found in existing installation directory, continuing with full installation.
+            popd
+        )
+    )
+    echo.
+)
+
 REM Detect and display system architecture
 echo 🔍 Detecting system architecture...
 set "DETECTED_ARCH=x64/AMD64"
