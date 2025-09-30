@@ -8,25 +8,20 @@ echo ================================================
 echo   Bituach Leumi Certificate Detection Utility
 echo ================================================
 
-echo Scanning certificate store: Cert:\LocalMachine\My
-echo Looking for certificates with private keys...
+echo Scanning certificate store: Cert:\CurrentUser\My
+echo Looking for PersonalID Supervised Operational certificates with accessible private keys...
 
-REM Detect certificates using PowerShell
-echo Detecting certificates...
-pwsh -Command "& { try { Write-Host 'Searching for Bituach Leumi certificate in Cert:\LocalMachine\My...'; $certs = Get-ChildItem -Path 'Cert:\LocalMachine\My' | Where-Object { $_.Subject -match 'CN=' -and $_.HasPrivateKey -eq $true -and $_.NotAfter -gt (Get-Date) }; if ($certs.Count -eq 0) { Write-Host 'No valid certificates with private keys found in LocalMachine\My store'; Write-Host 'Please ensure your Bituach Leumi certificate USB disk is connected and certificate is installed'; exit 1 }; Write-Host 'Found certificate(s):'; foreach ($cert in $certs) { $issuer = $cert.Issuer; $subject = $cert.Subject; $thumbprint = $cert.Thumbprint; $expiry = $cert.NotAfter; Write-Host \"  Subject: $subject\"; Write-Host \"  Issuer: $issuer\"; Write-Host \"  Thumbprint: $thumbprint\"; Write-Host \"  Expires: $expiry\"; Write-Host ''; }; $selectedCert = $certs | Sort-Object NotAfter -Descending | Select-Object -First 1; Write-Host \"Selected certificate thumbprint: $($selectedCert.Thumbprint)\"; Write-Host \"Subject: $($selectedCert.Subject)\"; Write-Host \"Expires: $($selectedCert.NotAfter)\"; $selectedCert.Thumbprint } catch { Write-Host 'Certificate detection failed:' $_.Exception.Message; Write-Host 'Will proceed without setting CERT_THUMBPRINT - you may need to set it manually'; exit 0 } }" > "%TEMP%\cert_detection_output.txt" 2>&1
+REM Detect certificates using PowerShell with online key testing
+echo Detecting certificates with accessible private keys (USB device must be inserted)...
 
-REM Process the output
-if exist "%TEMP%\cert_detection_output.txt" (
-    type "%TEMP%\cert_detection_output.txt"
-    
-    REM Extract just the thumbprint from the last line
-    for /f "tokens=*" %%i in ('type "%TEMP%\cert_detection_output.txt" ^| findstr /E /C:"A B C D E F 0 1 2 3 4 5 6 7 8 9"') do (
-        set "DETECTED_CERT_THUMBPRINT=%%i"
-    )
-    
-    del "%TEMP%\cert_detection_output.txt" >nul 2>&1
-    
-    if not "!DETECTED_CERT_THUMBPRINT!"=="" (
+REM First run - display certificate information with online key testing
+pwsh -Command "& { function Test-CertKeyOnline { param([System.Security.Cryptography.X509Certificates.X509Certificate2]$Cert); try { $rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($Cert); if ($rsa) { $null = $rsa.SignData([byte[]](0x01,0x02,0x03), [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1); return $true } } catch { } try { $ecdsa = [System.Security.Cryptography.X509Certificates.ECDsaCertificateExtensions]::GetECDsaPrivateKey($Cert); if ($ecdsa) { $null = $ecdsa.SignData([byte[]](0x01,0x02,0x03), [System.Security.Cryptography.HashAlgorithmName]::SHA256); return $true } } catch { } return $false }; function Get-ProviderName { param([System.Security.Cryptography.X509Certificates.X509Certificate2]$Cert); try { $rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($Cert); if ($rsa -and $rsa.Key -and $rsa.Key.Provider) { return $rsa.Key.Provider.Provider } } catch {} try { if ($Cert.PrivateKey -and $Cert.PrivateKey.CspKeyContainerInfo) { return $Cert.PrivateKey.CspKeyContainerInfo.ProviderName } } catch {} return 'N/A' }; Write-Host 'Searching for online PersonalID Supervised Operational certificates in Cert:\CurrentUser\My...'; $online = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.HasPrivateKey } | ForEach-Object { if (Test-CertKeyOnline -Cert $_) { $ku = ($_.Extensions | Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509KeyUsageExtension] }).KeyUsages; $eku = ($_.Extensions | Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] }).EnhancedKeyUsages.FriendlyName -join ', '; [pscustomobject]@{ Subject = $_.Subject; Issuer = $_.Issuer; NotBefore = $_.NotBefore; NotAfter = $_.NotAfter; Thumbprint = $_.Thumbprint; SerialNumber = $_.SerialNumber; FriendlyName = $_.FriendlyName; HasPrivateKey = $_.HasPrivateKey; Provider = Get-ProviderName -Cert $_; KeyUsage = $ku; EnhancedKeyUsage = $eku; RawCertificate = $_ } } }; $patternCN = '(?i)CN=.*PersonalID Supervised Operational'; $patternEKU = '(?i)(Client Authentication|Smart Card Log[- ]?on)'; $validCerts = $online | Where-Object { (($_.Subject + '|' + $_.Issuer) -match $patternCN) -and ($_.EnhancedKeyUsage -match $patternEKU) }; if ($validCerts) { Write-Host 'Found online PersonalID certificate(s) with accessible private keys:'; $validCerts | ForEach-Object { Write-Host \"  Subject: $($_.Subject)\"; Write-Host \"  Issuer: $($_.Issuer)\"; Write-Host \"  Thumbprint: $($_.Thumbprint)\"; Write-Host \"  Expires: $($_.NotAfter)\"; Write-Host \"  Provider: $($_.Provider)\"; Write-Host \"  Key Usage: $($_.KeyUsage)\"; Write-Host \"  Enhanced Key Usage: $($_.EnhancedKeyUsage)\"; Write-Host ''; }; $selectedCert = $validCerts | Where-Object { $_.NotAfter -gt (Get-Date) } | Sort-Object NotAfter -Descending | Select-Object -First 1; if ($selectedCert) { Write-Host \"Selected certificate thumbprint: $($selectedCert.Thumbprint)\"; Write-Host \"Subject: $($selectedCert.Subject)\"; Write-Host \"Expires: $($selectedCert.NotAfter)\"; Write-Host \"Provider: $($selectedCert.Provider)\"; } else { Write-Host 'No valid non-expired certificate found'; } } else { Write-Host 'No PersonalID Supervised Operational certificates found with accessible private keys'; Write-Host 'Please ensure your Bituach Leumi certificate USB device is connected and working'; } }"
+
+REM Second run - get just the thumbprint
+for /f "tokens=*" %%i in ('pwsh -Command "& { function Test-CertKeyOnline { param([System.Security.Cryptography.X509Certificates.X509Certificate2]$Cert); try { $rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($Cert); if ($rsa) { $null = $rsa.SignData([byte[]](0x01,0x02,0x03), [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1); return $true } } catch { } try { $ecdsa = [System.Security.Cryptography.X509Certificates.ECDsaCertificateExtensions]::GetECDsaPrivateKey($Cert); if ($ecdsa) { $null = $ecdsa.SignData([byte[]](0x01,0x02,0x03), [System.Security.Cryptography.HashAlgorithmName]::SHA256); return $true } } catch { } return $false }; $online = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.HasPrivateKey } | ForEach-Object { if (Test-CertKeyOnline -Cert $_) { $ku = ($_.Extensions | Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509KeyUsageExtension] }).KeyUsages; $eku = ($_.Extensions | Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] }).EnhancedKeyUsages.FriendlyName -join ', '; [pscustomobject]@{ Subject = $_.Subject; Issuer = $_.Issuer; NotAfter = $_.NotAfter; Thumbprint = $_.Thumbprint; EnhancedKeyUsage = $eku; RawCertificate = $_ } } }; $patternCN = '(?i)CN=.*PersonalID Supervised Operational'; $patternEKU = '(?i)(Client Authentication|Smart Card Log[- ]?on)'; $validCerts = $online | Where-Object { (($_.Subject + '|' + $_.Issuer) -match $patternCN) -and ($_.EnhancedKeyUsage -match $patternEKU) }; $selectedCert = $validCerts | Where-Object { $_.NotAfter -gt (Get-Date) } | Sort-Object NotAfter -Descending | Select-Object -First 1; if ($selectedCert) { $selectedCert.Thumbprint } }"') do (
+    set "DETECTED_CERT_THUMBPRINT=%%i"
+)
+if not "!DETECTED_CERT_THUMBPRINT!"=="" (
         echo.
         echo ================================================
         echo   CERTIFICATE DETECTION SUCCESSFUL
@@ -57,18 +52,17 @@ if exist "%TEMP%\cert_detection_output.txt" (
         echo ================================================
         echo   CERTIFICATE DETECTION INCOMPLETE
         echo ================================================
-        echo No suitable certificate thumbprint found in output.
-        echo Please ensure your Bituach Leumi certificate is properly installed.
+        echo No PersonalID Supervised Operational certificate found with accessible private key.
+        echo Please ensure your Bituach Leumi certificate device is connected and working.
         echo.
-        echo Manual configuration steps:
-        echo 1. Connect your Bituach Leumi USB certificate
-        echo 2. Install the certificate in Windows Certificate Store
-        echo 3. Run this script again or set CERT_THUMBPRINT manually
+        echo Troubleshooting steps:
+        echo 1. Connect your Bituach Leumi USB certificate device
+        echo 2. Ensure the device is properly recognized (check Device Manager)
+        echo 3. Verify the PersonalID certificate is installed in Windows Certificate Store (CurrentUser\My)
+        echo 4. Make sure the certificate has Client Authentication or Smart Card Log-on capability
+        echo 5. Try removing and reconnecting the USB device
+        echo 6. Run this script again or set CERT_THUMBPRINT manually
     )
-) else (
-    echo ERROR: Failed to run certificate detection
-    echo Please ensure PowerShell 7 is installed and certificates are accessible
-)
 
 echo.
 pause

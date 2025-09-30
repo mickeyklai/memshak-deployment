@@ -428,64 +428,6 @@ echo 🔍 [DEBUG] WSL needs installation - proceeding with setup
     )
     
     
-    REM Install Ubuntu distribution for Docker Desktop WSL integration
-    echo 🔍 Installing Ubuntu WSL distribution (required for Docker Desktop)...
-    echo 💡 This ensures Docker Desktop has a proper WSL environment to work with
-    
-    REM Try multiple methods to install Ubuntu WSL distribution
-    echo 🔍 Method 1: Installing Ubuntu via Windows Store (winget)...
-    winget install Canonical.Ubuntu --accept-source-agreements --accept-package-agreements --silent >nul 2>&1
-    if errorlevel 1 (
-        echo 🔍 Method 2: Installing Ubuntu via Chocolatey...
-        choco install wsl-ubuntu-2004 -y --no-progress >nul 2>&1
-        if errorlevel 1 (
-            echo 🔍 Method 3: Installing Ubuntu LTS via Microsoft Store...
-            powershell -Command "Get-AppxPackage -Name '*Ubuntu*' | Select-Object Name" >nul 2>&1
-            
-            REM Try to download and install Ubuntu manually
-            echo 🔍 Method 4: Manual Ubuntu WSL installation...
-            powershell -Command "Invoke-WebRequest -Uri 'https://aka.ms/wslubuntu2004' -OutFile 'ubuntu.appx' -UseBasicParsing" >nul 2>&1
-            if exist "ubuntu.appx" (
-                powershell -Command "Add-AppxPackage .\ubuntu.appx" >nul 2>&1
-                if not errorlevel 1 (
-                    echo ✅ Ubuntu WSL distribution installed manually
-                    del "ubuntu.appx" >nul 2>&1
-                ) else (
-                    echo ⚠️  Manual Ubuntu installation had issues
-                    del "ubuntu.appx" >nul 2>&1
-                )
-            ) else (
-                echo ⚠️  Could not download Ubuntu WSL distribution
-                echo 💡 Docker Desktop will attempt to install its own WSL distributions
-            )
-        ) else (
-            echo ✅ Ubuntu WSL distribution installed via Chocolatey
-        )
-    ) else (
-        echo ✅ Ubuntu WSL distribution installed via winget
-    )
-    
-    REM Configure WSL for Docker Desktop compatibility
-    echo 🔍 Configuring WSL for Docker Desktop compatibility...
-    
-    REM Enable WSL integration settings
-    echo 🔍 Configuring WSL integration settings...
-    
-    REM Create WSL config file for Docker Desktop
-    echo 🔍 Creating WSL configuration file...
-    powershell -Command "if (!(Test-Path '$env:USERPROFILE\.wslconfig')) { '[wsl2]' | Out-File -FilePath '$env:USERPROFILE\.wslconfig' -Encoding UTF8; 'memory=4GB' | Add-Content -Path '$env:USERPROFILE\.wslconfig'; 'processors=2' | Add-Content -Path '$env:USERPROFILE\.wslconfig'; 'swap=2GB' | Add-Content -Path '$env:USERPROFILE\.wslconfig' }" >nul 2>&1
-    
-    if exist "%USERPROFILE%\.wslconfig" (
-        echo ✅ WSL configuration file created successfully
-    ) else (
-        echo ⚠️  WSL configuration file creation had issues
-    )
-    
-    REM Restart WSL to apply configuration
-    echo 🔍 Restarting WSL to apply configuration...
-    wsl --shutdown >nul 2>&1
-    timeout /t 3 >nul
-    
     echo ✅ WSL2 installation and configuration completed
     echo ⚠️  IMPORTANT: A system restart is required for WSL2 to be fully functional
     
@@ -506,14 +448,95 @@ echo ⚠️  Docker not found. Installing Docker Desktop...
 echo 🔍 Note: Docker Desktop requires WSL2 which should now be installed
 timeout /t 2 >nul
 
+REM Check if we're on ARM architecture and handle special case
+if "!DETECTED_ARCH!"=="ARM64" (
+    echo ⚠️  ARM64 architecture detected - Chocolatey Docker may install wrong architecture
+    echo 💡 ARM64 systems require specific Docker Desktop version
+    echo.
+    set /p "use_arm_docker=Install ARM64-specific Docker Desktop? (Y/n) [default: Y]: "
+    if "!use_arm_docker!"=="" set "use_arm_docker=y"
+    
+    if /i "!use_arm_docker!"=="y" (
+        echo 🔍 Downloading Docker Desktop for ARM64 architecture...
+        goto :install_arm64_docker
+    ) else (
+        echo 🔍 Continuing with Chocolatey installation (may install x64 version)...
+    )
+)
+
 echo 🔍 Attempting Docker Desktop installation via Chocolatey (method 1/4)...
 choco install docker-desktop -y --no-progress --ignore-checksums
 if errorlevel 1 goto :docker_manual_install
 
 echo ✅ Docker Desktop installed successfully via Chocolatey
-echo 🔄 Refreshing PATH environment variable...
-call refreshenv
-goto :docker_section_complete
+goto :docker_restart_required
+
+:install_arm64_docker
+echo 🔍 Installing Docker Desktop for ARM64 architecture...
+set "ARM64_DOCKER_URL=https://desktop.docker.com/win/main/arm64/Docker%%20Desktop%%20Installer.exe?utm_source=docker&utm_medium=webreferral&utm_campaign=docs-driven-download-win-arm64"
+set "ARM64_INSTALLER=docker-desktop-arm64-installer.exe"
+
+echo 🔍 Downloading Docker Desktop ARM64 installer...
+powershell -Command "Invoke-WebRequest -Uri 'https://desktop.docker.com/win/main/arm64/Docker Desktop Installer.exe' -OutFile '%ARM64_INSTALLER%'" 2>nul
+
+if exist "%ARM64_INSTALLER%" (
+    echo ✅ ARM64 Docker installer downloaded successfully
+    echo 🔍 Installing Docker Desktop for ARM64...
+    
+    REM Try installation with different methods
+    "%ARM64_INSTALLER%" install --quiet --accept-license >nul 2>&1
+    set "ARM64_EXIT_CODE=%ERRORLEVEL%"
+    
+    if !ARM64_EXIT_CODE! equ 0 (
+        echo ✅ Docker Desktop ARM64 installed successfully
+        del "%ARM64_INSTALLER%" >nul 2>&1
+        goto :docker_restart_required
+    ) else (
+        echo 🔍 Trying alternative ARM64 installation method...
+        start /wait "" "%ARM64_INSTALLER%" install --accept-license
+        if !ERRORLEVEL! equ 0 (
+            echo ✅ Docker Desktop ARM64 installed successfully (alternative method)
+            del "%ARM64_INSTALLER%" >nul 2>&1
+            goto :docker_restart_required
+        ) else (
+            echo ❌ ARM64 Docker installation failed
+            del "%ARM64_INSTALLER%" >nul 2>&1
+            goto :docker_manual_install
+        )
+    )
+) else (
+    echo ❌ Failed to download ARM64 Docker installer
+    echo 🔍 Falling back to standard installation methods...
+    goto :docker_manual_install
+)
+
+:docker_restart_required
+echo.
+echo ⚠️  RESTART REQUIRED AFTER DOCKER INSTALLATION!
+echo.
+echo 🔄 Windows needs to restart to:
+echo    • Activate virtualization features (WSL2, Hypervisor Platform)
+echo    • Initialize Docker Desktop properly
+echo    • Enable Docker to detect virtualization capabilities
+echo.
+echo 💡 After restart:
+echo    1. Docker Desktop should start automatically
+echo    2. Run this installer again to complete Memshak setup
+echo    3. Or navigate to %INSTALL_DIR% and run: docker-compose up -d
+echo.
+echo ==========================================
+echo   DOCKER INSTALLATION COMPLETED!
+echo   RESTART REQUIRED TO CONTINUE
+echo ==========================================
+echo.
+echo Press any key to exit and restart your computer...
+pause >nul
+echo.
+echo 🔄 Please restart your computer now and then:
+echo    • Run this installer again, OR
+echo    • Navigate to %INSTALL_DIR% and run: docker-compose up -d
+echo.
+exit /b 0
 
 :docker_manual_install
 echo ❌ Chocolatey Docker installation failed. Trying direct download method (method 2/4)...
@@ -523,12 +546,18 @@ REM Try downloading and installing Docker manually with enhanced error handling
 echo 🔍 Detecting system architecture for direct download...
 timeout /t 1 >nul
         
-        REM Detect system architecture (simplified)
-        set "ARCH=amd64"
-        set "ARCH_PATH=amd64"
-        echo 🔍 Using AMD64 architecture for Docker Desktop (most compatible)
-        
-        echo 🔍 Preparing to download Docker Desktop for AMD64 architecture...
+        REM Use the already detected architecture
+        if "!DETECTED_ARCH!"=="ARM64" (
+            set "ARCH=arm64"
+            set "ARCH_PATH=arm64"
+            echo 🔍 Using ARM64 architecture for Docker Desktop (Snapdragon/ARM processors)
+            echo 🔍 Preparing to download Docker Desktop for ARM64 architecture...
+        ) else (
+            set "ARCH=amd64"
+            set "ARCH_PATH=amd64"
+            echo 🔍 Using AMD64 architecture for Docker Desktop (Intel/AMD processors)
+            echo 🔍 Preparing to download Docker Desktop for AMD64 architecture...
+        )
         echo ⚠️  WARNING: Docker Desktop installer is approximately 500-600MB
         echo 💾 This will use significant bandwidth and disk space
         echo.
@@ -578,8 +607,15 @@ timeout /t 1 >nul
         
         echo 🔍 Starting Docker Desktop download (this may take several minutes)...
         timeout /t 2 >nul
-        set "DOCKER_URL=https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe"
-        set "DOCKER_INSTALLER=docker-desktop-installer-amd64.exe"
+        
+        REM Set architecture-specific URLs and installer names
+        if "!ARCH!"=="arm64" (
+            set "DOCKER_URL=https://desktop.docker.com/win/main/arm64/Docker Desktop Installer.exe"
+            set "DOCKER_INSTALLER=docker-desktop-installer-arm64.exe"
+        ) else (
+            set "DOCKER_URL=https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe"
+            set "DOCKER_INSTALLER=docker-desktop-installer-amd64.exe"
+        )
         
         REM Check if installer already exists
         if exist "%DOCKER_INSTALLER%" goto :verify_existing_installer
@@ -608,23 +644,23 @@ timeout /t 1 >nul
 :start_fresh_download
         
         echo 🔍 Attempting download method 1: Simple PowerShell download...
-        powershell -Command "Invoke-WebRequest -Uri 'https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe' -OutFile '%DOCKER_INSTALLER%'" 2>nul
+        powershell -Command "Invoke-WebRequest -Uri '!DOCKER_URL!' -OutFile '%DOCKER_INSTALLER%'" 2>nul
         
         if exist "%DOCKER_INSTALLER%" goto :docker_downloaded_success
         
         echo 🔍 Attempting download method 2: PowerShell with basic parameters...
-        powershell -Command "$client = New-Object System.Net.WebClient; $client.DownloadFile('https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe', '%DOCKER_INSTALLER%')" 2>nul
+        powershell -Command "$client = New-Object System.Net.WebClient; $client.DownloadFile('!DOCKER_URL!', '%DOCKER_INSTALLER%')" 2>nul
         
         if exist "%DOCKER_INSTALLER%" goto :docker_downloaded_success
         
         echo 🔍 Attempting download method 3: Using CURL (if available)...
-        curl -L -o "%DOCKER_INSTALLER%" "https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe" >nul 2>&1
+        curl -L -o "%DOCKER_INSTALLER%" "!DOCKER_URL!" >nul 2>&1
         
         if exist "%DOCKER_INSTALLER%" goto :docker_downloaded_success
         goto :docker_download_failed
 
 :docker_downloaded_success
-        echo ✅ Docker Desktop downloaded successfully (AMD64 architecture)
+        echo ✅ Docker Desktop downloaded successfully (!ARCH! architecture)
         echo 🔍 Installing Docker Desktop...
         timeout /t 2 >nul
         
@@ -688,13 +724,13 @@ timeout /t 1 >nul
 :docker_install_success
         echo ✅ Docker Desktop installed successfully
         del "%DOCKER_INSTALLER%" >nul 2>&1
-        goto :configure_docker
+        goto :docker_restart_required
 
 :docker_install_warning
         echo ⚠️  Docker Desktop installation completed with exit code: %ERRORLEVEL%
         echo 💡 This may be normal - Docker sometimes reports non-zero exit codes on success
         del "%DOCKER_INSTALLER%" >nul 2>&1
-        goto :configure_docker
+        goto :docker_restart_required
 
 :configure_docker
 REM Configure Docker for startup regardless of exit code
@@ -714,31 +750,6 @@ set "STARTUP_FOLDER=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 powershell -Command "if (Test-Path '%ProgramFiles%\Docker\Docker\Docker Desktop.exe') { $WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%STARTUP_FOLDER%\Docker Desktop.lnk'); $Shortcut.TargetPath = '%ProgramFiles%\Docker\Docker\Docker Desktop.exe'; $Shortcut.Save() }" >nul 2>&1
 
 echo ✅ Docker Desktop configured for automatic startup (multiple methods)
-
-REM Configure Docker Desktop WSL integration
-echo 🔍 Configuring Docker Desktop WSL integration settings...
-
-REM Create Docker Desktop settings with WSL integration enabled
-set "DOCKER_SETTINGS_PATH=%APPDATA%\Docker\settings.json"
-if not exist "%APPDATA%\Docker" mkdir "%APPDATA%\Docker"
-
-echo 🔍 Creating Docker Desktop settings for WSL integration...
-powershell -Command "$settings = @{ 'wslEngineEnabled' = $true; 'useWindowsContainers' = $false; 'exposeDockerAPIOnTCP2375' = $false; 'DockerDesktopForWSL2' = $true; 'integratedWslDistros' = @('Ubuntu') }; $settings | ConvertTo-Json | Out-File -FilePath '%DOCKER_SETTINGS_PATH%' -Encoding UTF8" >nul 2>&1
-
-if exist "%DOCKER_SETTINGS_PATH%" (
-    echo ✅ Docker Desktop WSL integration settings configured
-) else (
-    echo ⚠️  Docker Desktop settings creation had issues (will use defaults)
-)
-
-REM Ensure WSL distributions are available for Docker
-echo 🔍 Preparing WSL distributions for Docker Desktop...
-wsl --list --verbose >nul 2>&1
-if errorlevel 1 (
-    echo ⚠️  WSL may need restart to be fully functional
-) else (
-    echo ✅ WSL distributions ready for Docker Desktop integration
-)
 
 REM Try to start Docker Desktop
 if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :docker_exe_found
@@ -808,7 +819,7 @@ timeout /t 2 >nul
 REM Verify Winget installation worked
 echo 🔍 Verifying Winget Docker installation...
 timeout /t 5 >nul
-if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :configure_docker
+if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :docker_restart_required
 
 echo ⚠️  Winget installation completed but Docker executable not found, trying next method...
 goto :chocolatey_fallback_attempt
@@ -827,7 +838,7 @@ timeout /t 2 >nul
 REM Verify Chocolatey installation worked
 echo 🔍 Verifying Chocolatey Docker installation...
 timeout /t 5 >nul
-if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :configure_docker
+if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :docker_restart_required
 
 echo ⚠️  Chocolatey installation completed but Docker executable not found, trying alternative method...
 goto :docker_choco_alternative_fallback
@@ -843,13 +854,13 @@ timeout /t 2 >nul
 REM Verify alternative Chocolatey installation worked
 echo 🔍 Verifying alternative Chocolatey Docker installation...
 timeout /t 5 >nul
-if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :configure_docker
+if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :docker_restart_required
 
 echo ⚠️  All Chocolatey methods completed but Docker executable not found
 goto :all_docker_install_methods_failed
 
 :all_docker_install_methods_failed
-echo ❌ All Docker installation methods failed (Direct Download, AMD64 Fallback, Winget, Chocolatey)
+echo ❌ All Docker installation methods failed (Direct Download, Architecture-specific, Winget, Chocolatey)
 echo.
 echo 💡 MANUAL INSTALLATION REQUIRED:
 echo.
@@ -857,20 +868,32 @@ echo 📥 Download Docker Desktop manually from:
 echo    🌐 https://www.docker.com/products/docker-desktop
 echo.
 echo 💻 Architecture-specific direct download URLs:
-echo    • x64/AMD64: https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe
-echo    • ARM64: https://desktop.docker.com/win/main/arm64/Docker Desktop Installer.exe
+echo    • x64/AMD64 (Intel/AMD): https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe
+echo    • ARM64 (Snapdragon): https://desktop.docker.com/win/main/arm64/Docker Desktop Installer.exe
+echo.
+echo 🔍 Your detected architecture: !DETECTED_ARCH!
+if "!DETECTED_ARCH!"=="ARM64" (
+    echo 💡 For ARM64/Snapdragon systems, use the ARM64 installer for best compatibility
+)
 echo.
 echo 🔧 After manual installation:
-echo    1. Ensure Docker Desktop is running (check system tray)
-echo    2. Open Command Prompt as Administrator
-echo    3. Navigate to: %INSTALL_DIR%
-echo    4. Run: docker-compose up -d
+echo    1. RESTART your computer (required for virtualization features)
+echo    2. Ensure Docker Desktop is running (check system tray)
+echo    3. Open Command Prompt as Administrator
+echo    4. Navigate to: %INSTALL_DIR%
+echo    5. Run: docker-compose up -d
+echo.
+echo ⚠️  IMPORTANT: A restart is required after Docker installation to:
+echo    • Activate Windows virtualization features
+echo    • Enable Docker to detect WSL2 and Hypervisor Platform
+echo    • Ensure Docker Desktop starts properly
 echo.
 echo 💡 Common Docker installation issues and solutions:
 echo    • Insufficient disk space - free up at least 4GB
 echo    • Antivirus blocking - temporarily disable real-time protection
 echo    • Windows version too old - requires Windows 10/11 with WSL2 support
 echo    • Network restrictions - check corporate firewall/proxy settings
+echo    • Missing restart after Windows feature changes
 echo.
 goto :end_docker_manual_install
 

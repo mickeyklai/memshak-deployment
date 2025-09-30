@@ -1,0 +1,8 @@
+[31;1mWrite-Error: [31;1mTesting certificates for accessible private keys...[0m
+[31;1mWrite-Error: [31;1mFound PersonalID certificate(s) with accessible private keys:[0m
+[31;1mWrite-Error: [31;1m  Subject: CN=Faingerch Elisar ID_200296002, OU=Elisar Faingerch, O=25-200296002, C=IL, SERIALNUMBER=01 200296002, T=Adv, SN=Faingerch, G=Elisar[0m
+[31;1mWrite-Error: [31;1m  Provider: Microsoft Smart Card Key Storage Provider[0m
+[31;1mWrite-Error: [31;1m  Expires: 08/31/2031 10:30:13[0m
+[31;1mWrite-Error: [31;1m  Thumbprint: 38139CC1FF64B3DDBD69E8A7B9BA554648385E04[0m
+[31;1mWrite-Error: [31;1m[0m
+[31;1mWrite-Error: [31;1mSUCCESS: Selected certificate with thumbprint: 38139CC1FF64B3DDBD69E8A7B9BA554648385E04[0m

@@ -1,13 +1,11 @@
 @echo off
-REM Start PowerShell HTTP Authentication Server
-REM Clean architecture without Node.js dependencies
+setlocal enabledelayedexpansion
 
 echo ====================================
 echo   PowerShell Authentication Server
 echo ====================================
 echo.
 
-REM Check if PowerShell 7 is installed
 pwsh --version >nul 2>&1
 if errorlevel 1 (
     echo WARNING: PowerShell 7 not found, trying Windows PowerShell...
@@ -19,68 +17,89 @@ if errorlevel 1 (
         exit /b 1
     )
     echo Using Windows PowerShell (legacy)
-    set PS_COMMAND=powershell
+    set "PS_COMMAND=powershell"
 ) else (
     echo Using PowerShell 7
-    set PS_COMMAND=pwsh
+    set "PS_COMMAND=pwsh"
 )
 
-REM Check if certificate thumbprint is set, if not try to detect it automatically
-if not defined CERT_THUMBPRINT (
-    echo Certificate thumbprint not set, attempting automatic detection...
-    echo Looking for certificates from USB devices and smart cards only...
+REM Always attempt auto-detect unless user sets SKIP_AUTO_CERT=1
+if not "%SKIP_AUTO_CERT%"=="1" (
     echo.
+    echo Running automatic certificate detection...
+    echo Looking for PersonalID certificates with accessible private keys...
+    echo.
+    REM Clear variable first
+    set "AUTO_CERT="
+
+    REM Use PowerShell to emit only the last (thumbprint) line of the script's stdout
+    for /f "usebackq delims=" %%i in (`!PS_COMMAND! -ExecutionPolicy Bypass -Command "(& '%~dp0detect-certificate-auto.ps1') 2^>$null | Select-Object -Last 1"`) do set "AUTO_CERT=%%i"
+
+    REM Basic trim (remove surrounding quotes/spaces if any)
+    for /f "tokens=*" %%i in ("!AUTO_CERT!") do set "AUTO_CERT=%%~i"
+
+    REM Validate the captured result
+    REM (Optional) Uncomment for debugging:
+    REM echo Detected result: !AUTO_CERT!
     
-    REM Create temporary PowerShell script for USB certificate detection
-    echo $allCerts = @^(^) > usb-cert-temp.ps1
-    echo $allCerts += Get-ChildItem -Path Cert:\CurrentUser\My -ErrorAction SilentlyContinue ^| Where-Object { $_.HasPrivateKey -eq $true -and $_.NotAfter -gt ^(Get-Date^) } >> usb-cert-temp.ps1
-    echo $allCerts += Get-ChildItem -Path Cert:\LocalMachine\My -ErrorAction SilentlyContinue ^| Where-Object { $_.HasPrivateKey -eq $true -and $_.NotAfter -gt ^(Get-Date^) } >> usb-cert-temp.ps1
-    echo $usbCerts = $allCerts ^| Where-Object { >> usb-cert-temp.ps1
-    echo     $cert = $_ >> usb-cert-temp.ps1
-    echo     $isFromUSB = $false >> usb-cert-temp.ps1
-    echo     try { if ^($cert.PrivateKey.CspKeyContainerInfo.ProviderName -match 'Smart Card^|Card^|USB^|Token^|eToken^|SafeNet^|Gemalto'^) { $isFromUSB = $true } } catch { } >> usb-cert-temp.ps1
-    echo     try { if ^($cert.PrivateKey.CspKeyContainerInfo.Removable -or $cert.PrivateKey.CspKeyContainerInfo.HardwareDevice^) { $isFromUSB = $true } } catch { } >> usb-cert-temp.ps1
-    echo     try { if ^($cert.Subject -match 'CN=[0-9]{8,9}' -or $cert.Subject -match 'Israeli^|Israel^|IL=' -or $cert.Issuer -match 'Israeli^|Israel^|Ministry^|Gov'^) { $isFromUSB = $true } } catch { } >> usb-cert-temp.ps1
-    echo     if ^($cert.Subject -match '^CN=localhost$' -and $cert.Issuer -match '^CN=localhost$'^) { $isFromUSB = $false } >> usb-cert-temp.ps1
-    echo     return $isFromUSB >> usb-cert-temp.ps1
-    echo } >> usb-cert-temp.ps1
-    echo if ^($usbCerts.Count -gt 0^) { ^($usbCerts ^| Sort-Object NotAfter -Descending ^| Select-Object -First 1^).Thumbprint } else { 'NO_USB_CERTIFICATES_FOUND' } >> usb-cert-temp.ps1
-    
-    for /f "delims=" %%i in ('pwsh -ExecutionPolicy Bypass -File usb-cert-temp.ps1') do (
-        set "CERT_THUMBPRINT=%%i"
-    )
-    
-    del usb-cert-temp.ps1 >nul 2>&1
-    
-    if "%CERT_THUMBPRINT%"=="NO_USB_CERTIFICATES_FOUND" (
-        echo ❌ No certificates from USB devices or smart cards found
-        echo.
-        echo Please ensure your Bituach Leumi certificate USB disk is connected
-        echo and the certificate is properly installed in the Windows Certificate Store
-        echo.
-        echo You can also run detect-certificate.bat for detailed detection
-        echo.
-        set /p CERT_THUMBPRINT=Enter your certificate thumbprint manually: 
-        if "%CERT_THUMBPRINT%"=="" (
-            echo ERROR: Certificate thumbprint is required
-            pause
-            exit /b 1
+    REM Determine if AUTO_CERT looks like a hex thumbprint (40+ hex chars typical for SHA1)
+    set "_IS_HEX=0"
+    echo !AUTO_CERT!| findstr /R /I "^[0-9A-F][0-9A-F][0-9A-F][0-9A-F]" >nul && (
+        for /f "delims=" %%H in ("!AUTO_CERT!") do (
+            set "_LEN=0"
+            for /l %%L in (1,1,64) do if not "!AUTO_CERT:~%%L,1!"=="" set /a _LEN+=1
         )
-    ) else (
-        echo ✅ Successfully auto-detected USB certificate!
-        echo Certificate Thumbprint: %CERT_THUMBPRINT%
-        
-        REM Set system environment variable for future sessions
-        setx CERT_THUMBPRINT "%CERT_THUMBPRINT%" >nul
-        echo Environment variable set for future sessions
-        
-        REM Display certificate details
-        pwsh -Command "$cert = Get-ChildItem -Path Cert:\CurrentUser\My\%CERT_THUMBPRINT% -ErrorAction SilentlyContinue; if (-not $cert) { $cert = Get-ChildItem -Path Cert:\LocalMachine\My\%CERT_THUMBPRINT% -ErrorAction SilentlyContinue } if ($cert) { Write-Host \"Certificate Details:\" -ForegroundColor Green; Write-Host \"  Subject:\" $cert.Subject; Write-Host \"  Expires:\" $cert.NotAfter }"
     )
+    REM Simple length threshold (>= 32) and hex-only check
+    echo !AUTO_CERT!| findstr /R /I "^[0-9A-F][0-9A-F][0-9A-F][0-9A-F][0-9A-F].*$" >nul && set "_MAYBE_HEX=1"
+    for /f "delims=0123456789ABCDEFabcdef" %%X in ("!AUTO_CERT!") do set "_HAS_NON_HEX=1"
+    if not defined _HAS_NON_HEX if defined _MAYBE_HEX set "_IS_HEX=1"
+
+    if "!_IS_HEX!"=="1" goto :CERT_SUCCESS
+    if /I "!AUTO_CERT!"=="NO_CERTIFICATES_FOUND" goto :CERT_NONE
+    if /I "!AUTO_CERT!"=="DETECTION_ERROR" goto :CERT_ERROR
+    if not "!AUTO_CERT!"=="" goto :CERT_UNEXPECTED
+    goto :CERT_UNEXPECTED
+    echo.
 )
+
+goto :AFTER_DETECT
+
+:CERT_SUCCESS
+    set "CERT_THUMBPRINT=!AUTO_CERT!"
+    echo.
+    echo SUCCESS: Automatically selected certificate !CERT_THUMBPRINT!
+    setx CERT_THUMBPRINT "!CERT_THUMBPRINT!" >nul 2>&1
+    if !errorlevel! equ 0 echo Environment variable set for future sessions
+    set "_MAYBE_HEX=" & set "_HAS_NON_HEX=" & set "_IS_HEX="
+    goto :AFTER_DETECT
+
+:CERT_NONE
+    echo.
+    echo ERROR: No PersonalID certificates found with accessible private keys
+    echo Please verify device connection and try again.
+    pause & exit /b 1
+
+:CERT_ERROR
+    echo.
+    echo ERROR: Certificate detection encountered an error (device / provider issue)
+    echo Try reconnecting the device or running detect-certificate.bat
+    pause & exit /b 1
+
+:CERT_UNEXPECTED
+    echo.
+    echo ERROR: Unexpected detection output: "!AUTO_CERT!"
+    pause & exit /b 1
+
+:AFTER_DETECT
 
 echo.
-echo Final Certificate Thumbprint: %CERT_THUMBPRINT%
+echo Final Certificate Thumbprint: !CERT_THUMBPRINT!
+if "!CERT_THUMBPRINT!"=="" (
+    echo ERROR: CERT_THUMBPRINT not set. Cannot start server.
+    pause
+    exit /b 1
+)
 echo.
 
 REM Start the PowerShell HTTP server
@@ -95,4 +114,4 @@ echo.
 echo Press Ctrl+C to stop the server
 echo.
 
-%PS_COMMAND% -ExecutionPolicy Bypass -File host-auth-server.ps1
+!PS_COMMAND! -ExecutionPolicy Bypass -File host-auth-server.ps1

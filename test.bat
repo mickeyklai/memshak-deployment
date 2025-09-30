@@ -1,0 +1,10 @@
+off
+echo
+Testing...
+set
+PS_COMMAND=pwsh
+%PS_COMMAND%
+-ExecutionPolicy
+Bypass
+-File
+cert-detect-thumbprint.ps1
