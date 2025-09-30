@@ -41,43 +41,67 @@ function Get-ProviderName {
     return 'N/A'
 }
 
-# Test certificates for accessible private keys
-Write-Host 'Testing certificates for accessible private keys...'
+# Fast / slow path detection for display
+Write-Host 'Scanning for PersonalID certificates (fast-path first)...'
 
-$online = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.HasPrivateKey } | ForEach-Object {
-    if (Test-CertKeyOnline -Cert $_) {
-        $ku = ($_.Extensions | Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509KeyUsageExtension] }).KeyUsages
-        $eku = ($_.Extensions | Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] }).EnhancedKeyUsages.FriendlyName -join ', '
-        
+$patternCN  = '(?i)CN=.*PersonalID Supervised Operational'
+$patternEKU = '(?i)(Client Authentication|Smart Card Log[-\s]?on)'
+
+$candidates = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.HasPrivateKey } | ForEach-Object {
+    $ekuExt   = $_.Extensions | Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] }
+    $ekuNames = $ekuExt.EnhancedKeyUsages.FriendlyName -join ', '
+    if ((($_.Subject + '|' + $_.Issuer) -match $patternCN) -and ($ekuNames -match $patternEKU)) {
         [pscustomobject]@{
             Subject = $_.Subject
             Issuer = $_.Issuer
             NotAfter = $_.NotAfter
             Thumbprint = $_.Thumbprint
-            Provider = Get-ProviderName -Cert $_
-            EnhancedKeyUsage = $eku
+            EnhancedKeyUsage = $ekuNames
             RawCertificate = $_
         }
     }
 }
 
-$patternCN = '(?i)CN=.*PersonalID Supervised Operational'
-$patternEKU = '(?i)(Client Authentication|Smart Card Log[-\s]?on)'
-
-$validCerts = $online | Where-Object {
-    (($_.Subject + '|' + $_.Issuer) -match $patternCN) -and 
-    ($_.EnhancedKeyUsage -match $patternEKU)
+if (-not $candidates -or $candidates.Count -eq 0) {
+    Write-Host 'No matching PersonalID candidate certificates found.'
+    return
 }
 
-if ($validCerts) {
-    Write-Host 'Found PersonalID certificate(s) with accessible private keys:'
-    $validCerts | ForEach-Object {
-        Write-Host "  Subject: $($_.Subject)"
-        Write-Host "  Provider: $($_.Provider)"
-        Write-Host "  Expires: $($_.NotAfter)"
-        Write-Host "  Thumbprint: $($_.Thumbprint)"
-        Write-Host ''
+if ($candidates.Count -eq 1) {
+    $only = $candidates[0]
+    Write-Host 'FAST-PATH: Single candidate detected (skipping private key sign test):'
+    Write-Host "  Subject: $($only.Subject)"
+    Write-Host "  Expires: $($only.NotAfter)"
+    Write-Host "  Thumbprint: $($only.Thumbprint)"
+    Write-Host "  EKU: $($only.EnhancedKeyUsage)"
+    return
+}
+
+Write-Host ("Found {0} candidates. Performing private key accessibility test..." -f $candidates.Count)
+
+$online = foreach ($c in $candidates) {
+    if (Test-CertKeyOnline -Cert $c.RawCertificate) {
+        [pscustomobject]@{
+            Subject        = $c.Subject
+            Issuer         = $c.Issuer
+            NotAfter       = $c.NotAfter
+            Thumbprint     = $c.Thumbprint
+            Provider       = Get-ProviderName -Cert $c.RawCertificate
+            EnhancedKeyUsage = $c.EnhancedKeyUsage
+        }
     }
-} else {
-    Write-Host 'No PersonalID certificates found with accessible private keys'
+}
+
+if (-not $online -or $online.Count -eq 0) {
+    Write-Host 'No candidates passed private key online test.'
+    return
+}
+
+Write-Host 'Online-accessible PersonalID certificates:'
+$online | ForEach-Object {
+    Write-Host "  Subject: $($_.Subject)"
+    Write-Host "  Provider: $($_.Provider)"
+    Write-Host "  Expires: $($_.NotAfter)"
+    Write-Host "  Thumbprint: $($_.Thumbprint)"
+    Write-Host ''
 }

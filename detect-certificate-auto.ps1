@@ -43,55 +43,84 @@ function Get-ProviderName {
 
 # Main detection logic
 try {
-    Write-Error 'Testing certificates for accessible private keys...' -ErrorAction Continue
-    
-    $online = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.HasPrivateKey } | ForEach-Object {
-        if (Test-CertKeyOnline -Cert $_) {
-            $eku = ($_.Extensions | Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] }).EnhancedKeyUsages.FriendlyName -join ', '
-            
+    Write-Error 'Scanning certificate store (fast-path first)...' -ErrorAction Continue
+
+    $patternCN  = '(?i)CN=.*PersonalID Supervised Operational'
+    $patternEKU = '(?i)(Client Authentication|Smart Card Log[-\s]?on)'
+
+    # FAST PATH: collect candidates without doing signing yet
+    $candidates = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.HasPrivateKey } | ForEach-Object {
+        $ekuExt = $_.Extensions | Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] }
+        $ekuNames = $ekuExt.EnhancedKeyUsages.FriendlyName -join ', '
+        if ( (($_.Subject + '|' + $_.Issuer) -match $patternCN) -and ($ekuNames -match $patternEKU) ) {
             [pscustomobject]@{
                 Subject = $_.Subject
                 Issuer = $_.Issuer
                 NotAfter = $_.NotAfter
                 Thumbprint = $_.Thumbprint
-                Provider = Get-ProviderName -Cert $_
-                EnhancedKeyUsage = $eku
+                EnhancedKeyUsage = $ekuNames
                 RawCertificate = $_
             }
         }
     }
-    
-    $patternCN = '(?i)CN=.*PersonalID Supervised Operational'
-    $patternEKU = '(?i)(Client Authentication|Smart Card Log[-\s]?on)'
-    
-    $validCerts = $online | Where-Object {
-        (($_.Subject + '|' + $_.Issuer) -match $patternCN) -and 
-        ($_.EnhancedKeyUsage -match $patternEKU)
+
+    if (-not $candidates -or $candidates.Count -eq 0) {
+        Write-Error 'ERROR: No matching PersonalID candidate certificates with private key present' -ErrorAction Continue
+        Write-Output 'NO_CERTIFICATES_FOUND'
+        return
     }
-    
-    if ($validCerts) {
-        Write-Error 'Found PersonalID certificate(s) with accessible private keys:' -ErrorAction Continue
-        $validCerts | ForEach-Object {
-            Write-Error "  Subject: $($_.Subject)" -ErrorAction Continue
-            Write-Error "  Provider: $($_.Provider)" -ErrorAction Continue
-            Write-Error "  Expires: $($_.NotAfter)" -ErrorAction Continue
-            Write-Error "  Thumbprint: $($_.Thumbprint)" -ErrorAction Continue
-            Write-Error '' -ErrorAction Continue
-        }
-        
-        # Select the certificate with the longest validity (most recent expiry)
-        $selectedCert = $validCerts | Where-Object { $_.NotAfter -gt (Get-Date) } | Sort-Object NotAfter -Descending | Select-Object -First 1
-        
-        if ($selectedCert) {
-            Write-Error "SUCCESS: Selected certificate with thumbprint: $($selectedCert.Thumbprint)" -ErrorAction Continue
-            Write-Output $selectedCert.Thumbprint
-            return
+
+    # If exactly one candidate, accept immediately (skip online sign test)
+    if ($candidates.Count -eq 1) {
+        $only = $candidates[0]
+        Write-Error "FAST-PATH: Single candidate detected. Selecting thumbprint: $($only.Thumbprint)" -ErrorAction Continue
+        Write-Output $only.Thumbprint
+        return
+    }
+
+    Write-Error ("Found {0} candidate certificates. Performing private key online accessibility test..." -f $candidates.Count) -ErrorAction Continue
+
+    # SLOW PATH: confirm online accessibility via sign attempt
+    $online = foreach ($c in $candidates) {
+        if (Test-CertKeyOnline -Cert $c.RawCertificate) {
+            $prov = Get-ProviderName -Cert $c.RawCertificate
+            [pscustomobject]@{
+                Subject = $c.Subject
+                Issuer = $c.Issuer
+                NotAfter = $c.NotAfter
+                Thumbprint = $c.Thumbprint
+                Provider = $prov
+                EnhancedKeyUsage = $c.EnhancedKeyUsage
+                RawCertificate = $c.RawCertificate
+            }
         }
     }
-    
-    Write-Error 'ERROR: No PersonalID certificates found with accessible private keys' -ErrorAction Continue
+
+    if (-not $online -or $online.Count -eq 0) {
+        Write-Error 'ERROR: No certificates passed private key online test' -ErrorAction Continue
+        Write-Output 'NO_CERTIFICATES_FOUND'
+        return
+    }
+
+    Write-Error 'Online-accessible PersonalID certificate(s):' -ErrorAction Continue
+    $online | ForEach-Object {
+        Write-Error "  Subject: $($_.Subject)" -ErrorAction Continue
+        Write-Error "  Provider: $($_.Provider)" -ErrorAction Continue
+        Write-Error "  Expires: $($_.NotAfter)" -ErrorAction Continue
+        Write-Error "  Thumbprint: $($_.Thumbprint)" -ErrorAction Continue
+        Write-Error '' -ErrorAction Continue
+    }
+
+    $selected = $online | Where-Object { $_.NotAfter -gt (Get-Date) } | Sort-Object NotAfter -Descending | Select-Object -First 1
+    if ($selected) {
+        Write-Error "SUCCESS: Selected certificate with thumbprint: $($selected.Thumbprint)" -ErrorAction Continue
+        Write-Output $selected.Thumbprint
+        return
+    }
+
+    Write-Error 'ERROR: No non-expired certificate available after filtering' -ErrorAction Continue
     Write-Output 'NO_CERTIFICATES_FOUND'
-    
+
 } catch {
     Write-Error "ERROR: Certificate detection failed: $($_.Exception.Message)" -ErrorAction Continue
     Write-Output 'DETECTION_ERROR'
