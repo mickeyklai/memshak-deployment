@@ -38,7 +38,7 @@ $online = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.HasPrivateKey }
 }
 
 $patternCN = '(?i)CN=.*PersonalID Supervised Operational'
-$patternEKU = '(?i)(Client Authentication|Smart Card Log[-\s]?on)'
+$patternEKU = '(?i)(Client Authentication|Smart Card Log[-\s]?on|אימות לקוח|כניסה של כרטיס חכם)'
 
 $validCerts = $online | Where-Object {
     (($_.Subject + '|' + $_.Issuer) -match $patternCN) -and 

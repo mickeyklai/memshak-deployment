@@ -45,7 +45,7 @@ function Get-ProviderName {
 Write-Host 'Scanning for PersonalID certificates (fast-path first)...'
 
 $patternCN  = '(?i)CN=.*PersonalID Supervised Operational'
-$patternEKU = '(?i)(Client Authentication|Smart Card Log[-\s]?on)'
+$patternEKU = '(?i)(Client Authentication|Smart Card Log[-\s]?on|אימות לקוח|כניסה של כרטיס חכם)'
 
 $candidates = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.HasPrivateKey } | ForEach-Object {
     $ekuExt   = $_.Extensions | Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] }

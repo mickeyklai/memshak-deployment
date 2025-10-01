@@ -1,5 +1,5 @@
 @echo off
-REM Memshak Complete Installer - Simplified Version
+REM Memshak Complete Installer - Fixed Version with Better Flow Control
 chcp 65001 >nul 2>&1
 setlocal EnableDelayedExpansion
 
@@ -10,7 +10,7 @@ echo Started: %DATE% %TIME% >> "%LOG_FILE%"
 echo ========================================== >> "%LOG_FILE%"
 
 echo ==========================================
-echo    MEMSHAK INSTALLER v3.4
+echo    MEMSHAK INSTALLER v3.6-FIXED
 echo ==========================================
 echo.
 echo Log file: %LOG_FILE%
@@ -43,25 +43,45 @@ echo [INFO] Install directory: %INSTALL_DIR%
 echo.
 
 REM Check if Docker already installed and system already configured
+echo [DEBUG] Checking Docker installation... >> "%LOG_FILE%"
+echo [DEBUG] Checking Docker installation...
+
 docker --version >nul 2>&1
-if not errorlevel 1 (
+set "DOCKER_CHECK=%ERRORLEVEL%"
+
+echo [DEBUG] Docker check result: %DOCKER_CHECK% >> "%LOG_FILE%"
+echo [DEBUG] Docker check result: %DOCKER_CHECK%
+
+if %DOCKER_CHECK% EQU 0 (
     echo [INFO] Docker found - checking system configuration... >> "%LOG_FILE%"
     echo [INFO] Docker found - checking system configuration...
+    echo [DEBUG] Checking WSL status... >> "%LOG_FILE%"
+    echo [DEBUG] Checking WSL status...
     
-    REM Check if WSL is properly configured
     wsl --status >nul 2>&1
-    if not errorlevel 1 (
+    set "WSL_CHECK=%ERRORLEVEL%"
+    
+    echo [DEBUG] WSL check result: %WSL_CHECK% >> "%LOG_FILE%"
+    echo [DEBUG] WSL check result: %WSL_CHECK%
+    
+    if !WSL_CHECK! EQU 0 (
         echo [INFO] System already configured - skipping prerequisites >> "%LOG_FILE%"
         echo [INFO] System already configured - skipping prerequisites
-        echo [DEBUG] Jumping to install_memshak_files section >> "%LOG_FILE%"
-        echo [DEBUG] Jumping to install_memshak_files section
-        timeout /t 1 >nul
-        goto install_memshak_files
+        echo [INFO] Proceeding directly to Memshak installation >> "%LOG_FILE%"
+        echo [INFO] Proceeding directly to Memshak installation
+        echo [DEBUG] About to jump to skip_to_memshak_install >> "%LOG_FILE%"
+        echo [DEBUG] About to jump to skip_to_memshak_install
+        echo.
+        timeout /t 2 >nul
+        goto skip_to_memshak_install
     ) else (
         echo [INFO] Docker found but WSL needs configuration >> "%LOG_FILE%"
         echo [INFO] Docker found but WSL needs configuration
         goto configure_wsl_only
     )
+) else (
+    echo [DEBUG] Docker not found - full installation needed >> "%LOG_FILE%"
+    echo [DEBUG] Docker not found - full installation needed
 )
 
 echo ========================================== >> "%LOG_FILE%"
@@ -265,49 +285,129 @@ echo [INFO] System restart required >> "%LOG_FILE%"
 pause
 exit /b 0
 
-:install_memshak_files
+REM ==========================================
+REM MEMSHAK INSTALLATION (No Prerequisites Needed)
+REM ==========================================
+:skip_to_memshak_install
 echo.
-echo [DEBUG] Reached install_memshak_files section >> "%LOG_FILE%"
-echo [DEBUG] Reached install_memshak_files section
+echo ========================================== >> "%LOG_FILE%"
+echo [DEBUG] STARTING MEMSHAK INSTALLATION >> "%LOG_FILE%"
+echo ========================================== >> "%LOG_FILE%"
 echo.
-timeout /t 2 >nul
+echo ==========================================
+echo   INSTALLING MEMSHAK
+echo ==========================================
+echo.
+
 echo ========================================== >> "%LOG_FILE%"
 echo [STEP 1/3] DOWNLOADING MEMSHAK >> "%LOG_FILE%"
 echo ========================================== >> "%LOG_FILE%"
 echo.
 echo [STEP 1/3] DOWNLOADING MEMSHAK
+echo.
 
 set "DOWNLOAD_URL=https://github.com/mickeyklai/memshak-deployment/archive/refs/heads/main.zip"
 set "TEMP_ZIP=%TEMP%\memshak-deploy.zip"
 
-echo [ACTION] Downloading package... >> "%LOG_FILE%"
-echo Downloading package...
+REM Delete old zip if exists
+if exist "%TEMP_ZIP%" (
+    echo [DEBUG] Removing old zip file >> "%LOG_FILE%"
+    del "%TEMP_ZIP%" >nul 2>&1
+)
+
+echo [ACTION] Downloading package from GitHub... >> "%LOG_FILE%"
+echo [ACTION] Downloading package from GitHub...
 echo [DEBUG] Download URL: %DOWNLOAD_URL% >> "%LOG_FILE%"
 echo [DEBUG] Target file: %TEMP_ZIP% >> "%LOG_FILE%"
-powershell -Command "try { Invoke-WebRequest -Uri '%DOWNLOAD_URL%' -OutFile '%TEMP_ZIP%' -UseBasicParsing; Write-Host 'PowerShell download completed' } catch { Write-Error $_.Exception.Message; exit 1 }" >> "%LOG_FILE%" 2>&1
-if errorlevel 1 (
-    echo [ERROR] Download failed >> "%LOG_FILE%"
-    echo ERROR: Download failed
-    echo Check log file for details: %LOG_FILE%
+echo.
+
+REM Try download with better error handling
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& { try { Write-Host 'Starting download...'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '%DOWNLOAD_URL%' -OutFile '%TEMP_ZIP%' -UseBasicParsing -TimeoutSec 300; if (Test-Path '%TEMP_ZIP%') { $size = (Get-Item '%TEMP_ZIP%').Length; Write-Host \"Download successful. Size: $size bytes\"; exit 0 } else { Write-Host 'Download failed - file does not exist'; exit 1 } } catch { Write-Host \"ERROR: $($_.Exception.Message)\"; Write-Host \"ERROR: $($_.Exception.GetType().FullName)\"; exit 1 } }" >> "%LOG_FILE%" 2>&1
+
+set "DOWNLOAD_RESULT=%ERRORLEVEL%"
+echo [DEBUG] PowerShell exit code: %DOWNLOAD_RESULT% >> "%LOG_FILE%"
+
+if %DOWNLOAD_RESULT% NEQ 0 (
+    echo [ERROR] Download failed with exit code: %DOWNLOAD_RESULT% >> "%LOG_FILE%"
+    echo ERROR: Download failed! Check log file for details.
+    echo Log file: %LOG_FILE%
+    echo.
+    echo Attempting alternative download method with curl...
+    
+    REM Try with curl as fallback
+    curl --version >nul 2>&1
+    if not errorlevel 1 (
+        echo [DEBUG] Trying curl download >> "%LOG_FILE%"
+        curl -L -o "%TEMP_ZIP%" "%DOWNLOAD_URL%" >> "%LOG_FILE%" 2>&1
+        if not errorlevel 1 (
+            echo [OK] Downloaded with curl >> "%LOG_FILE%"
+            goto download_success
+        )
+    )
+    
+    echo [ERROR] All download methods failed >> "%LOG_FILE%"
+    echo ERROR: Unable to download Memshak package
+    echo.
+    echo Please check your internet connection and try again.
     pause
     exit /b 1
 )
+
+:download_success
 echo [OK] Download complete >> "%LOG_FILE%"
 echo [OK] Download complete
-echo [DEBUG] Downloaded file size: >> "%LOG_FILE%"
-dir "%TEMP_ZIP%" >> "%LOG_FILE%" 2>&1
-
+echo [DEBUG] Download success label reached >> "%LOG_FILE%"
 echo.
+
+REM Verify downloaded file
+echo [DEBUG] Verifying downloaded file exists... >> "%LOG_FILE%"
+if not exist "%TEMP_ZIP%" (
+    echo [ERROR] Downloaded file not found! >> "%LOG_FILE%"
+    echo ERROR: Downloaded file verification failed
+    pause
+    exit /b 1
+)
+
+echo [DEBUG] Getting file size... >> "%LOG_FILE%"
+for %%A in ("%TEMP_ZIP%") do set "FILE_SIZE=%%~zA"
+echo [DEBUG] File size: !FILE_SIZE! bytes >> "%LOG_FILE%"
+echo [DEBUG] File size: !FILE_SIZE! bytes
+
+echo [DEBUG] Checking if file size is valid (greater than 1000 bytes)... >> "%LOG_FILE%"
+if !FILE_SIZE! LSS 1000 (
+    echo [ERROR] Downloaded file too small ^(!FILE_SIZE! bytes^) - likely corrupted >> "%LOG_FILE%"
+    echo ERROR: Download appears corrupted
+    pause
+    exit /b 1
+)
+
+echo [DEBUG] File size check passed - file is !FILE_SIZE! bytes >> "%LOG_FILE%"
+echo [DEBUG] File verification passed >> "%LOG_FILE%"
+echo [DEBUG] File verification passed
+echo [DEBUG] Proceeding to extraction step... >> "%LOG_FILE%"
+echo.
+
 echo ========================================== >> "%LOG_FILE%"
 echo [STEP 2/3] EXTRACTING FILES >> "%LOG_FILE%"
 echo ========================================== >> "%LOG_FILE%"
 echo.
+echo ==========================================
 echo [STEP 2/3] EXTRACTING FILES
+echo ==========================================
+echo.
 
 echo [ACTION] Extracting archive... >> "%LOG_FILE%"
-echo Extracting archive...
-powershell -Command "Expand-Archive -Path '%TEMP_ZIP%' -DestinationPath '%TEMP%' -Force" >> "%LOG_FILE%" 2>&1
-if errorlevel 1 (
+echo [ACTION] Extracting archive...
+echo [DEBUG] Extracting to: %TEMP% >> "%LOG_FILE%"
+echo [DEBUG] Starting PowerShell extraction... >> "%LOG_FILE%"
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& { try { Write-Host 'Extracting...'; Expand-Archive -Path '%TEMP_ZIP%' -DestinationPath '%TEMP%' -Force; Write-Host 'Extraction successful'; exit 0 } catch { Write-Host \"ERROR: $($_.Exception.Message)\"; exit 1 } }" >> "%LOG_FILE%" 2>&1
+
+set "EXTRACT_RESULT=%ERRORLEVEL%"
+echo [DEBUG] Extraction exit code: %EXTRACT_RESULT% >> "%LOG_FILE%"
+echo [DEBUG] Extraction exit code: %EXTRACT_RESULT%
+
+if %EXTRACT_RESULT% NEQ 0 (
     echo [ERROR] Extraction failed >> "%LOG_FILE%"
     echo ERROR: Extraction failed
     pause
@@ -315,8 +415,10 @@ if errorlevel 1 (
 )
 echo [OK] Extracted >> "%LOG_FILE%"
 echo [OK] Extracted
+echo.
 
 echo [ACTION] Finding extracted directory... >> "%LOG_FILE%"
+echo [ACTION] Finding extracted directory...
 set "EXTRACTED_DIR="
 for /d %%i in ("%TEMP%\memshak-deployment-*") do (
     echo [FOUND] %%i >> "%LOG_FILE%"
@@ -325,84 +427,133 @@ for /d %%i in ("%TEMP%\memshak-deployment-*") do (
 
 if not defined EXTRACTED_DIR (
     echo [ERROR] Extracted directory not found >> "%LOG_FILE%"
+    echo [DEBUG] Listing TEMP directory contents: >> "%LOG_FILE%"
+    dir "%TEMP%\memshak*" /b >> "%LOG_FILE%" 2>&1
     echo ERROR: Extracted directory not found
+    echo.
+    echo The download may be corrupted. Please try again.
     pause
     exit /b 1
 )
 
-if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+echo [DEBUG] Using directory: %EXTRACTED_DIR% >> "%LOG_FILE%"
+echo [DEBUG] Using directory: %EXTRACTED_DIR%
+echo.
 
-echo [ACTION] Copying files... >> "%LOG_FILE%"
-echo Copying files to: %INSTALL_DIR%
-xcopy "%EXTRACTED_DIR%\*" "%INSTALL_DIR%\" /e /h /y /i >> "%LOG_FILE%" 2>&1
-if errorlevel 1 (
-    echo [ERROR] Copy failed - exit code: %ERRORLEVEL% >> "%LOG_FILE%"
+if not exist "%INSTALL_DIR%" (
+    echo [ACTION] Creating install directory... >> "%LOG_FILE%"
+    mkdir "%INSTALL_DIR%"
+)
+
+echo [ACTION] Copying files to installation directory... >> "%LOG_FILE%"
+echo [ACTION] Copying files to installation directory...
+xcopy "%EXTRACTED_DIR%\*" "%INSTALL_DIR%\" /e /h /y /i /q >> "%LOG_FILE%" 2>&1
+set "COPY_RESULT=%ERRORLEVEL%"
+echo [DEBUG] Copy exit code: %COPY_RESULT% >> "%LOG_FILE%"
+
+if %COPY_RESULT% GTR 0 (
+    echo [ERROR] Copy failed - exit code: %COPY_RESULT% >> "%LOG_FILE%"
     echo ERROR: File copy failed
     pause
     exit /b 1
 )
-echo [OK] Files copied >> "%LOG_FILE%"
-echo [OK] Files copied
+echo [OK] Files copied successfully >> "%LOG_FILE%"
+echo [OK] Files copied successfully
+echo.
 
-echo [ACTION] Verifying files... >> "%LOG_FILE%"
+echo [ACTION] Verifying installation files... >> "%LOG_FILE%"
+echo [ACTION] Verifying installation files...
 if exist "%INSTALL_DIR%\docker-compose.yml" (
     echo [OK] docker-compose.yml found >> "%LOG_FILE%"
     echo [OK] docker-compose.yml found
 ) else (
-    echo [WARNING] docker-compose.yml NOT found >> "%LOG_FILE%"
-    echo [WARNING] docker-compose.yml NOT found
+    echo [ERROR] docker-compose.yml NOT found >> "%LOG_FILE%"
+    echo [ERROR] docker-compose.yml NOT found - installation incomplete
+    echo [DEBUG] Directory contents: >> "%LOG_FILE%"
+    dir "%INSTALL_DIR%" >> "%LOG_FILE%" 2>&1
+    pause
+    exit /b 1
 )
 
-echo [ACTION] Cleaning up... >> "%LOG_FILE%"
-del "%TEMP_ZIP%" >nul 2>&1
-timeout /t 2 >nul
-start /wait /min cmd /c "rmdir /s /q "%EXTRACTED_DIR%" 2>nul"
-echo [OK] Cleanup complete >> "%LOG_FILE%"
-
+if exist "%INSTALL_DIR%\start-local.bat" (
+    echo [OK] start-local.bat found >> "%LOG_FILE%"
+    echo [OK] start-local.bat found
+) else (
+    echo [WARNING] start-local.bat NOT found >> "%LOG_FILE%"
+    echo [WARNING] start-local.bat NOT found
+)
 echo.
+
+echo [ACTION] Cleaning up temporary files... >> "%LOG_FILE%"
+echo [ACTION] Cleaning up temporary files...
+del "%TEMP_ZIP%" >nul 2>&1
+timeout /t 1 >nul
+rmdir /s /q "%EXTRACTED_DIR%" >nul 2>&1
+echo [OK] Cleanup complete >> "%LOG_FILE%"
+echo [OK] Cleanup complete
+echo.
+
 echo ========================================== >> "%LOG_FILE%"
 echo [STEP 3/3] STARTING SERVICES >> "%LOG_FILE%"
 echo ========================================== >> "%LOG_FILE%"
 echo.
 echo [STEP 3/3] STARTING SERVICES
+echo.
 
-echo [ACTION] Changing to install directory >> "%LOG_FILE%"
+echo [ACTION] Navigating to install directory >> "%LOG_FILE%"
+echo [DEBUG] Changing directory to: %INSTALL_DIR% >> "%LOG_FILE%"
 cd /d "%INSTALL_DIR%"
+echo [DEBUG] Current directory: %CD% >> "%LOG_FILE%"
 
 if not exist "start-local.bat" (
     echo [ERROR] start-local.bat not found! >> "%LOG_FILE%"
     echo ERROR: start-local.bat not found in %INSTALL_DIR%
+    echo [DEBUG] Directory contents: >> "%LOG_FILE%"
+    dir >> "%LOG_FILE%" 2>&1
+    echo.
+    echo The installation may be incomplete. Please check the log file.
     pause
     exit /b 1
 )
 
 echo [INFO] Found start-local.bat >> "%LOG_FILE%"
-echo Found start-local.bat
+echo [INFO] Found start-local.bat
 echo.
 echo Starting Memshak services...
+echo This may take a few minutes while Docker containers download and start...
 echo.
 
-echo [ACTION] Calling start-local.bat >> "%LOG_FILE%"
+echo [ACTION] Executing start-local.bat >> "%LOG_FILE%"
 call start-local.bat
 
 echo.
-echo [INFO] start-local.bat completed >> "%LOG_FILE%"
+echo [INFO] start-local.bat execution completed >> "%LOG_FILE%"
+echo [INFO] start-local.bat execution completed
 echo.
-echo [ACTION] Creating shortcuts >> "%LOG_FILE%"
-powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%USERPROFILE%\Desktop\Memshak.lnk'); $Shortcut.TargetPath = 'https://localhost:8443'; $Shortcut.Save()" >> "%LOG_FILE%" 2>&1
+
+echo [ACTION] Creating desktop shortcut... >> "%LOG_FILE%"
+echo [ACTION] Creating desktop shortcut...
+powershell -NoProfile -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%USERPROFILE%\Desktop\Memshak.lnk'); $Shortcut.TargetPath = 'https://localhost:8443'; $Shortcut.Save()" >> "%LOG_FILE%" 2>&1
+if not errorlevel 1 (
+    echo [OK] Desktop shortcut created >> "%LOG_FILE%"
+    echo [OK] Desktop shortcut created
+)
 
 echo.
-echo [INFO] Installation completed >> "%LOG_FILE%"
+echo [INFO] Installation completed successfully >> "%LOG_FILE%"
 echo ==========================================
-echo   INSTALLATION COMPLETED
+echo   INSTALLATION COMPLETED SUCCESSFULLY!
 echo ==========================================
 echo.
-echo Location: %INSTALL_DIR%
-echo URL: https://localhost:8443
-echo Log: %LOG_FILE%
+echo Installation Directory: %INSTALL_DIR%
+echo Memshak URL: https://localhost:8443
+echo Log File: %LOG_FILE%
 echo.
 echo Memshak should be accessible at https://localhost:8443
-echo Wait 1-2 minutes for services to initialize.
+echo Please wait 1-2 minutes for all services to fully initialize.
+echo.
+echo If you encounter any SSL certificate warnings in your browser,
+echo you can safely proceed (this is expected for local development).
 echo.
 pause
 exit /b 0

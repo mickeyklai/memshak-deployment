@@ -46,7 +46,7 @@ try {
     Write-Error 'Scanning certificate store (fast-path first)...' -ErrorAction Continue
 
     $patternCN  = '(?i)CN=.*PersonalID Supervised Operational'
-    $patternEKU = '(?i)(Client Authentication|Smart Card Log[-\s]?on)'
+    $patternEKU = '(?i)(Client Authentication|Smart Card Log[-\s]?on|אימות לקוח|כניסה של כרטיס חכם)'
 
     # FAST PATH: collect candidates without doing signing yet
     $candidates = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.HasPrivateKey } | ForEach-Object {

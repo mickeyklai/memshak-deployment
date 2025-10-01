@@ -65,7 +65,7 @@ $online =
 
 # --- Apply filters ---
 $patternCN  = '(?i)CN=.*PersonalID Supervised Operational'
-$patternEKU = '(?i)(Client Authentication|Smart Card Log[- ]?on)'
+$patternEKU = '(?i)(Client Authentication|Smart Card Log[- ]?on|אימות לקוח|כניסה של כרטיס חכם)'
 
 $online |
   Where-Object {

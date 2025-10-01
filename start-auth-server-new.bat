@@ -47,7 +47,7 @@ if not defined CERT_THUMBPRINT (
         echo   1. Connect your Bituach Leumi USB certificate device
         echo   2. Ensure the device is properly recognized (check Device Manager)
         echo   3. Verify the PersonalID certificate is installed in Windows Certificate Store
-        echo   4. Make sure the certificate has "Client Authentication" or "Smart Card Log-on" capability
+        echo   4. Make sure the certificate has "Client Authentication"/"אימות לקוח" or "Smart Card Log-on"/"כניסה של כרטיס חכם" capability
         echo   5. Try removing and reconnecting the USB device
         echo.
         echo You can also run detect-certificate.bat for detailed detection and troubleshooting
