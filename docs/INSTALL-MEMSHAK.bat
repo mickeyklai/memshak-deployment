@@ -10,7 +10,7 @@ echo Started: %DATE% %TIME% >> "%LOG_FILE%"
 echo ========================================== >> "%LOG_FILE%"
 
 echo ==========================================
-echo    MEMSHAK INSTALLER v3.3
+echo    MEMSHAK INSTALLER v3.4
 echo ==========================================
 echo.
 echo Log file: %LOG_FILE%
@@ -42,19 +42,30 @@ echo [INFO] Install directory: %INSTALL_DIR% >> "%LOG_FILE%"
 echo [INFO] Install directory: %INSTALL_DIR%
 echo.
 
-REM Check if Docker already installed
+REM Check if Docker already installed and system already configured
 docker --version >nul 2>&1
 if not errorlevel 1 (
-    echo [INFO] Docker found - skipping prerequisites >> "%LOG_FILE%"
-    echo [INFO] Docker found - skipping prerequisites
-    goto install_memshak_files
+    echo [INFO] Docker found - checking system configuration... >> "%LOG_FILE%"
+    echo [INFO] Docker found - checking system configuration...
+    
+    REM Check if WSL is properly configured
+    wsl --status >nul 2>&1
+    if not errorlevel 1 (
+        echo [INFO] System already configured - skipping prerequisites >> "%LOG_FILE%"
+        echo [INFO] System already configured - skipping prerequisites
+        goto install_memshak_files
+    ) else (
+        echo [INFO] Docker found but WSL needs configuration >> "%LOG_FILE%"
+        echo [INFO] Docker found but WSL needs configuration
+        goto configure_wsl_only
+    )
 )
 
 echo ========================================== >> "%LOG_FILE%"
-echo [STEP 1/4] INSTALLING CHOCOLATEY >> "%LOG_FILE%"
+echo [STEP 1/5] INSTALLING CHOCOLATEY >> "%LOG_FILE%"
 echo ========================================== >> "%LOG_FILE%"
 echo.
-echo [STEP 1/4] INSTALLING CHOCOLATEY
+echo [STEP 1/5] INSTALLING CHOCOLATEY
 
 choco --version >nul 2>&1
 if errorlevel 1 (
@@ -77,10 +88,10 @@ if errorlevel 1 (
 
 echo.
 echo ========================================== >> "%LOG_FILE%"
-echo [STEP 2/4] INSTALLING POWERSHELL 7 >> "%LOG_FILE%"
+echo [STEP 2/5] INSTALLING POWERSHELL 7 >> "%LOG_FILE%"
 echo ========================================== >> "%LOG_FILE%"
 echo.
-echo [STEP 2/4] INSTALLING POWERSHELL 7
+echo [STEP 2/5] INSTALLING POWERSHELL 7
 
 pwsh --version >nul 2>&1
 if errorlevel 1 (
@@ -96,25 +107,53 @@ if errorlevel 1 (
 
 echo.
 echo ========================================== >> "%LOG_FILE%"
-echo [STEP 3/4] ENABLING WSL >> "%LOG_FILE%"
+echo [STEP 3/5] ENABLING WSL FEATURES >> "%LOG_FILE%"
 echo ========================================== >> "%LOG_FILE%"
 echo.
-echo [STEP 3/4] ENABLING WSL
+echo [STEP 3/5] ENABLING WSL FEATURES
 
-echo [ACTION] Enabling WSL features... >> "%LOG_FILE%"
-echo Enabling WSL features...
+:configure_wsl_only
+echo [ACTION] Enabling WSL and virtualization features... >> "%LOG_FILE%"
+echo Enabling WSL and virtualization features...
+
+REM Enable core WSL features
+echo [INFO] Enabling Windows Subsystem for Linux... >> "%LOG_FILE%"
 dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart >> "%LOG_FILE%" 2>&1
+if errorlevel 1 (
+    echo [WARNING] WSL feature enablement had issues >> "%LOG_FILE%"
+) else (
+    echo [OK] WSL feature enabled >> "%LOG_FILE%"
+)
+
+REM Enable Virtual Machine Platform
+echo [INFO] Enabling Virtual Machine Platform... >> "%LOG_FILE%"
 dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart >> "%LOG_FILE%" 2>&1
+if errorlevel 1 (
+    echo [WARNING] Virtual Machine Platform enablement had issues >> "%LOG_FILE%"
+) else (
+    echo [OK] Virtual Machine Platform enabled >> "%LOG_FILE%"
+)
+
+REM Update WSL
+echo [INFO] Updating WSL... >> "%LOG_FILE%"
 wsl --update >> "%LOG_FILE%" 2>&1
-echo [OK] WSL features enabled >> "%LOG_FILE%"
-echo [OK] WSL features enabled
+echo [OK] WSL features configured >> "%LOG_FILE%"
+echo [OK] WSL features configured
 
 echo.
 echo ========================================== >> "%LOG_FILE%"
-echo [STEP 4/4] INSTALLING DOCKER >> "%LOG_FILE%"
+echo [STEP 4/5] INSTALLING DOCKER DESKTOP >> "%LOG_FILE%"
 echo ========================================== >> "%LOG_FILE%"
 echo.
-echo [STEP 4/4] INSTALLING DOCKER
+echo [STEP 4/5] INSTALLING DOCKER DESKTOP
+
+REM Check if we should skip Docker installation
+docker --version >nul 2>&1
+if not errorlevel 1 (
+    echo [INFO] Docker already installed, skipping installation >> "%LOG_FILE%"
+    echo [INFO] Docker already installed, skipping installation
+    goto configure_docker_startup
+)
 
 if "%DETECTED_ARCH%"=="ARM64" (
     echo [INFO] ARM64 detected - direct download >> "%LOG_FILE%"
@@ -145,23 +184,81 @@ if "%DETECTED_ARCH%"=="ARM64" (
 )
 
 echo.
-echo [ACTION] Configuring Docker startup... >> "%LOG_FILE%"
-echo Configuring Docker startup...
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "Docker Desktop" /t REG_SZ /d "\"%ProgramFiles%\Docker\Docker\Docker Desktop.exe\"" /f >nul 2>&1
+:configure_docker_startup
+echo.
+echo ========================================== >> "%LOG_FILE%"
+echo [STEP 5/5] CONFIGURING DOCKER STARTUP >> "%LOG_FILE%"
+echo ========================================== >> "%LOG_FILE%"
+echo.
+echo [STEP 5/5] CONFIGURING DOCKER STARTUP
+
+echo [ACTION] Configuring Docker Desktop for automatic startup... >> "%LOG_FILE%"
+echo Configuring Docker Desktop for automatic startup...
+
+REM Method 1: Registry startup entry (User level)
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "Docker Desktop" /t REG_SZ /d "\"%ProgramFiles%\Docker\Docker\Docker Desktop.exe\" --start-machine" /f >> "%LOG_FILE%" 2>&1
+if not errorlevel 1 (
+    echo [OK] User registry startup configured >> "%LOG_FILE%"
+    echo [OK] User registry startup configured
+) else (
+    echo [WARNING] User registry startup failed >> "%LOG_FILE%"
+)
+
+REM Method 2: System-wide registry startup (if needed)
+reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "Docker Desktop" /t REG_SZ /d "\"%ProgramFiles%\Docker\Docker\Docker Desktop.exe\" --start-machine" /f >> "%LOG_FILE%" 2>&1
+if not errorlevel 1 (
+    echo [OK] System registry startup configured >> "%LOG_FILE%"
+    echo [OK] System registry startup configured
+) else (
+    echo [INFO] System registry startup not configured (may require different permissions) >> "%LOG_FILE%"
+)
+
+REM Method 3: Startup folder shortcut
+set "STARTUP_FOLDER=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" (
+    echo [ACTION] Creating startup folder shortcut... >> "%LOG_FILE%"
+    powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%STARTUP_FOLDER%\Docker Desktop.lnk'); $Shortcut.TargetPath = '%ProgramFiles%\Docker\Docker\Docker Desktop.exe'; $Shortcut.Arguments = '--start-machine'; $Shortcut.Save()" >> "%LOG_FILE%" 2>&1
+    if not errorlevel 1 (
+        echo [OK] Startup folder shortcut created >> "%LOG_FILE%"
+        echo [OK] Startup folder shortcut created
+    ) else (
+        echo [WARNING] Startup folder shortcut failed >> "%LOG_FILE%"
+    )
+) else (
+    echo [WARNING] Docker Desktop executable not found for startup configuration >> "%LOG_FILE%"
+    echo [WARNING] Docker Desktop executable not found for startup configuration
+)
+
+echo [OK] Docker startup configuration completed >> "%LOG_FILE%"
+echo [OK] Docker startup configuration completed
 
 echo.
 echo ========================================== >> "%LOG_FILE%"
-echo DOCKER INSTALLATION COMPLETE >> "%LOG_FILE%"
+echo SYSTEM CONFIGURATION COMPLETE >> "%LOG_FILE%"
 echo ========================================== >> "%LOG_FILE%"
 echo.
 echo ==========================================
-echo   DOCKER INSTALLATION COMPLETE
+echo   SYSTEM CONFIGURATION COMPLETE
 echo ==========================================
 echo.
-echo RESTART REQUIRED!
+echo The following have been installed/configured:
+echo - WSL (Windows Subsystem for Linux)
+echo - Virtual Machine Platform
+echo - Windows Hypervisor Platform
+echo - Docker Desktop
+echo - Docker automatic startup
 echo.
-echo After restart, run this installer again.
+echo *** RESTART REQUIRED ***
 echo.
+echo Please restart your computer now to activate:
+echo - Virtualization features (WSL2, Hyper-V, etc.)
+echo - Docker Desktop integration
+echo.
+echo After restart, run this installer again to:
+echo - Download and install Memshak application
+echo - Start the services
+echo.
+echo [INFO] System restart required >> "%LOG_FILE%"
 pause
 exit /b 0
 
