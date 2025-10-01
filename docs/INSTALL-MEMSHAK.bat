@@ -53,6 +53,9 @@ if not errorlevel 1 (
     if not errorlevel 1 (
         echo [INFO] System already configured - skipping prerequisites >> "%LOG_FILE%"
         echo [INFO] System already configured - skipping prerequisites
+        echo [DEBUG] Jumping to install_memshak_files section >> "%LOG_FILE%"
+        echo [DEBUG] Jumping to install_memshak_files section
+        timeout /t 1 >nul
         goto install_memshak_files
     ) else (
         echo [INFO] Docker found but WSL needs configuration >> "%LOG_FILE%"
@@ -263,6 +266,11 @@ pause
 exit /b 0
 
 :install_memshak_files
+echo.
+echo [DEBUG] Reached install_memshak_files section >> "%LOG_FILE%"
+echo [DEBUG] Reached install_memshak_files section
+echo.
+timeout /t 2 >nul
 echo ========================================== >> "%LOG_FILE%"
 echo [STEP 1/3] DOWNLOADING MEMSHAK >> "%LOG_FILE%"
 echo ========================================== >> "%LOG_FILE%"
@@ -274,15 +282,20 @@ set "TEMP_ZIP=%TEMP%\memshak-deploy.zip"
 
 echo [ACTION] Downloading package... >> "%LOG_FILE%"
 echo Downloading package...
-powershell -Command "Invoke-WebRequest -Uri '%DOWNLOAD_URL%' -OutFile '%TEMP_ZIP%' -UseBasicParsing" >> "%LOG_FILE%" 2>&1
+echo [DEBUG] Download URL: %DOWNLOAD_URL% >> "%LOG_FILE%"
+echo [DEBUG] Target file: %TEMP_ZIP% >> "%LOG_FILE%"
+powershell -Command "try { Invoke-WebRequest -Uri '%DOWNLOAD_URL%' -OutFile '%TEMP_ZIP%' -UseBasicParsing; Write-Host 'PowerShell download completed' } catch { Write-Error $_.Exception.Message; exit 1 }" >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
     echo [ERROR] Download failed >> "%LOG_FILE%"
     echo ERROR: Download failed
+    echo Check log file for details: %LOG_FILE%
     pause
     exit /b 1
 )
 echo [OK] Download complete >> "%LOG_FILE%"
 echo [OK] Download complete
+echo [DEBUG] Downloaded file size: >> "%LOG_FILE%"
+dir "%TEMP_ZIP%" >> "%LOG_FILE%" 2>&1
 
 echo.
 echo ========================================== >> "%LOG_FILE%"
@@ -390,182 +403,6 @@ echo Log: %LOG_FILE%
 echo.
 echo Memshak should be accessible at https://localhost:8443
 echo Wait 1-2 minutes for services to initialize.
-echo.
-pause
-exit /b 0 [STEP 2/3] EXTRACTING FILES
-
-echo [ACTION] Extracting archive... >> "%LOG_FILE%"
-echo Extracting archive...
-powershell -Command "Expand-Archive -Path '%TEMP_ZIP%' -DestinationPath '%TEMP%' -Force" >> "%LOG_FILE%" 2>&1
-if errorlevel 1 (
-    echo [ERROR] Extraction failed >> "%LOG_FILE%"
-    echo ERROR: Extraction failed
-    pause
-    exit /b 1
-)
-echo [OK] Extracted >> "%LOG_FILE%"
-echo [OK] Extracted
-
-echo [ACTION] Finding extracted directory... >> "%LOG_FILE%"
-set "EXTRACTED_DIR="
-for /d %%i in ("%TEMP%\memshak-deployment-*") do (
-    echo [FOUND] %%i >> "%LOG_FILE%"
-    set "EXTRACTED_DIR=%%i"
-)
-
-if not defined EXTRACTED_DIR (
-    echo [ERROR] Extracted directory not found >> "%LOG_FILE%"
-    echo ERROR: Extracted directory not found
-    pause
-    exit /b 1
-)
-
-if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
-
-echo [ACTION] Copying files... >> "%LOG_FILE%"
-echo Copying files to: %INSTALL_DIR%
-xcopy "%EXTRACTED_DIR%\*" "%INSTALL_DIR%\" /e /h /y /i >> "%LOG_FILE%" 2>&1
-if errorlevel 1 (
-    echo [ERROR] Copy failed - exit code: %ERRORLEVEL% >> "%LOG_FILE%"
-    echo ERROR: File copy failed
-    pause
-    exit /b 1
-)
-echo [OK] Files copied >> "%LOG_FILE%"
-echo [OK] Files copied
-
-echo [ACTION] Verifying files... >> "%LOG_FILE%"
-if exist "%INSTALL_DIR%\docker-compose.yml" (
-    echo [OK] docker-compose.yml found >> "%LOG_FILE%"
-    echo [OK] docker-compose.yml found
-) else (
-    echo [WARNING] docker-compose.yml NOT found >> "%LOG_FILE%"
-    echo [WARNING] docker-compose.yml NOT found
-    echo [INFO] Files in install directory: >> "%LOG_FILE%"
-    dir "%INSTALL_DIR%" /b >> "%LOG_FILE%"
-)
-
-echo [ACTION] Cleaning up... >> "%LOG_FILE%"
-del "%TEMP_ZIP%" >nul 2>&1
-timeout /t 2 >nul
-start /wait /min cmd /c "rmdir /s /q "%EXTRACTED_DIR%" 2>nul"
-echo [OK] Cleanup complete >> "%LOG_FILE%"
-
-echo.
-echo ========================================== >> "%LOG_FILE%"
-echo [STEP 3/3] STARTING DOCKER SERVICES >> "%LOG_FILE%"
-echo ========================================== >> "%LOG_FILE%"
-echo.
-echo [STEP 3/3] STARTING DOCKER SERVICES
-echo.
-
-cd /d "%INSTALL_DIR%" >> "%LOG_FILE%" 2>&1
-
-if not exist "docker-compose.yml" (
-    echo [ERROR] docker-compose.yml not found! >> "%LOG_FILE%"
-    echo ERROR: docker-compose.yml not found in %INSTALL_DIR%
-    echo.
-    pause
-    exit /b 1
-)
-
-echo [INFO] Found docker-compose.yml >> "%LOG_FILE%"
-echo Found docker-compose.yml
-echo.
-echo Checking if Docker is ready...
-echo.
-
-docker info >nul 2>&1
-if not errorlevel 1 (
-    echo [OK] Docker is ready >> "%LOG_FILE%"
-    echo Docker is ready!
-    goto start_services
-)
-
-echo [INFO] Docker not ready, attempting to start Docker Desktop... >> "%LOG_FILE%"
-echo Docker not ready, checking if Docker Desktop needs to be started...
-
-tasklist /FI "IMAGENAME eq Docker Desktop.exe" 2>nul | find /I "Docker Desktop.exe" >nul 2>&1
-if errorlevel 1 (
-    if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" (
-        echo [ACTION] Starting Docker Desktop... >> "%LOG_FILE%"
-        echo Starting Docker Desktop...
-        start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" >nul 2>&1
-        echo Waiting for Docker Desktop to initialize (this may take 1-2 minutes)...
-    ) else (
-        echo [ERROR] Docker Desktop not found >> "%LOG_FILE%"
-        echo ERROR: Docker Desktop executable not found
-        echo Please install Docker Desktop manually
-        pause
-        exit /b 1
-    )
-) else (
-    echo Docker Desktop is running, waiting for it to be ready...
-)
-
-echo.
-echo Waiting for Docker daemon...
-set "max_wait=180"
-set "wait_count=0"
-
-:wait_loop
-timeout /t 10 >nul 2>&1
-set /a wait_count+=10
-echo Waiting... %wait_count%/%max_wait% seconds
-
-docker info >nul 2>&1
-if not errorlevel 1 goto start_services
-
-if %wait_count% lss %max_wait% goto wait_loop
-
-echo.
-echo [WARNING] Docker not ready after %max_wait% seconds >> "%LOG_FILE%"
-echo WARNING: Docker did not become ready after %max_wait% seconds
-echo.
-echo Please:
-echo 1. Ensure Docker Desktop is running
-echo 2. Wait for it to fully start
-echo 3. Then run: cd %INSTALL_DIR% ^&^& docker-compose up -d
-echo.
-pause
-exit /b 0
-
-:start_services
-echo.
-echo [OK] Docker ready >> "%LOG_FILE%"
-echo Docker is ready!
-echo.
-echo Starting services in background...
-echo.
-
-docker-compose up -d --remove-orphans
-
-if errorlevel 1 (
-    echo [WARNING] Services start had issues >> "%LOG_FILE%"
-    echo WARNING: Docker Compose had issues
-    echo Check logs with: docker-compose logs
-) else (
-    echo [OK] Services started >> "%LOG_FILE%"
-    echo [OK] All services started successfully!
-    echo.
-    echo Running containers:
-    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-)
-
-echo.
-echo [ACTION] Creating shortcuts... >> "%LOG_FILE%"
-powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%USERPROFILE%\Desktop\Memshak.lnk'); $Shortcut.TargetPath = 'https://localhost:8443'; $Shortcut.Save()" >> "%LOG_FILE%" 2>&1
-
-echo.
-echo ==========================================
-echo   INSTALLATION COMPLETED
-echo ==========================================
-echo.
-echo Location: %INSTALL_DIR%
-echo URL: https://localhost:8443
-echo Log: %LOG_FILE%
-echo.
-echo Press Ctrl+C to stop services, or close this window when done.
 echo.
 pause
 exit /b 0
