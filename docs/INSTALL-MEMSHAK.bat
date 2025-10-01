@@ -1,1182 +1,474 @@
 @echo off
-REM Memshak Complete Installer - Standalone Batch Version
-REM This script installs everything needed for Memshak without external files
-
-REM Set UTF-8 encoding to properly display emojis and special characters
+REM Memshak Complete Installer - Simplified Version
 chcp 65001 >nul 2>&1
-
 setlocal EnableDelayedExpansion
 
+REM Set up logging
+set "LOG_FILE=%~dp0memshak-install.log"
+echo Memshak Installation Log > "%LOG_FILE%"
+echo Started: %DATE% %TIME% >> "%LOG_FILE%"
+echo ========================================== >> "%LOG_FILE%"
+
 echo ==========================================
-echo    MEMSHAK COMPLETE INSTALLER v3.1
+echo    MEMSHAK INSTALLER v3.3
 echo ==========================================
 echo.
-echo This installer will automatically install:
-echo ✅ Chocolatey Package Manager  
-echo ✅ PowerShell 7
-echo ✅ Docker Desktop (~500-600MB download)
-echo ✅ WSL (Windows Subsystem for Linux)
-echo ✅ Memshak Application System
-echo.
-echo 💻 Supports: x64/AMD64 and ARM64 architectures
-echo ⚠️  Total download size: ~600MB+ (mainly Docker Desktop)
+echo Log file: %LOG_FILE%
 echo.
 
-REM Check if we're running as administrator
+REM Check admin
 net session >nul 2>&1
 if errorlevel 1 (
-    echo 🔧 Administrator privileges required!
-    echo.
-    echo This installer needs to:
-    echo • Install Chocolatey package manager
-    echo • Install PowerShell 7, Docker Desktop, and WSL
-    echo • Configure system services and startup
-    echo • Install SSL certificates
-    echo.
-    echo 💡 SOLUTION: Right-click this file and select "Run as administrator"
-    echo.
-    echo Press any key to exit...
-    pause >nul
+    echo ERROR: Administrator privileges required! >> "%LOG_FILE%"
+    echo ERROR: Administrator privileges required!
+    echo Right-click and select "Run as administrator"
+    pause
     exit /b 1
 )
 
-echo ✅ Running with Administrator privileges
-echo.
+echo [OK] Running as Administrator >> "%LOG_FILE%"
+echo [OK] Running as Administrator
 
-REM Quick-start fast path: If Docker already installed and Memshak system present, offer to just start services
-docker --version >nul 2>&1
-if not errorlevel 1 if exist "%USERPROFILE%\memshak-system\start-local.bat" (
-    echo 🔍 Existing Docker installation and Memshak system detected.
-    echo.
-    echo Would you like to skip re-installation and just start Memshak services now?
-    set /p "quickstart=Quick Start Memshak now? (Y/n) [default: Y]: "
-    if "%quickstart%"=="" set "quickstart=Y"
-    if /i "%quickstart%"=="Y" (
-        echo.
-        echo 🚀 Launching Memshak services...
-        pushd "%USERPROFILE%\memshak-system"
-        if exist start-local.bat (
-            call start-local.bat
-            popd
-            goto :eof
-        ) else (
-            echo ⚠️  start-local.bat not found in existing installation directory, continuing with full installation.
-            popd
-        )
-    )
-    echo.
-)
-
-REM Detect and display system architecture
-echo 🔍 Detecting system architecture...
-set "DETECTED_ARCH=x64/AMD64"
+REM Detect architecture
+set "DETECTED_ARCH=x64"
 echo %PROCESSOR_ARCHITECTURE% | find /i "ARM64" >nul 2>&1
-if not errorlevel 1 (
-    set "DETECTED_ARCH=ARM64"
-)
-for /f "tokens=2 delims==" %%i in ('wmic os get osarchitecture /value 2^>nul ^| find "="') do (
-    echo %%i | find /i "ARM64" >nul 2>&1
-    if not errorlevel 1 set "DETECTED_ARCH=ARM64"
-)
-echo ✅ System Architecture: %DETECTED_ARCH%
-echo.
+if not errorlevel 1 set "DETECTED_ARCH=ARM64"
 
-REM Set installation directory
+echo [INFO] Architecture: %DETECTED_ARCH% >> "%LOG_FILE%"
+echo [INFO] Architecture: %DETECTED_ARCH%
+
 set "INSTALL_DIR=%USERPROFILE%\memshak-system"
-echo Installation directory: %INSTALL_DIR%
+echo [INFO] Install directory: %INSTALL_DIR% >> "%LOG_FILE%"
+echo [INFO] Install directory: %INSTALL_DIR%
+echo.
 
-if exist "%INSTALL_DIR%" (
-    echo ⚠️  Installation directory already exists
-    set /p "overwrite=Continue anyway? (Y/n) [default: Y]: "
-    if "!overwrite!"=="" set "overwrite=y"
-    if /i not "!overwrite!"=="y" (
-        echo Installation cancelled
-        echo.
-        echo Press any key to exit...
-        pause >nul
-        exit /b 0
-    )
+REM Check if Docker already installed
+docker --version >nul 2>&1
+if not errorlevel 1 (
+    echo [INFO] Docker found - skipping prerequisites >> "%LOG_FILE%"
+    echo [INFO] Docker found - skipping prerequisites
+    goto install_memshak_files
 )
 
+echo ========================================== >> "%LOG_FILE%"
+echo [STEP 1/4] INSTALLING CHOCOLATEY >> "%LOG_FILE%"
+echo ========================================== >> "%LOG_FILE%"
 echo.
-echo [STEP 1/7] Checking and installing prerequisites...
-echo.
+echo [STEP 1/4] INSTALLING CHOCOLATEY
 
-REM Function to install Chocolatey
-echo 🔍 Checking for Chocolatey package manager...
 choco --version >nul 2>&1
 if errorlevel 1 (
-    echo ⚠️  Chocolatey not found. Installing Chocolatey...
-    
-    REM Install Chocolatey using PowerShell with enhanced network handling
-    powershell -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = 'Tls12,Tls11,Tls,Ssl3'; [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}; try { iex (Invoke-WebRequest -UseBasicParsing -Uri 'https://community.chocolatey.org/install.ps1' -TimeoutSec 30).Content } catch { Write-Host 'Fallback method'; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')) }"
-    
+    echo [ACTION] Installing Chocolatey... >> "%LOG_FILE%"
+    echo Installing Chocolatey...
+    powershell -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = 'Tls12'; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))" >> "%LOG_FILE%" 2>&1
     if errorlevel 1 (
-        echo ❌ Failed to install Chocolatey
-        echo.
-        echo Press any key to exit...
-        pause >nul
+        echo [ERROR] Chocolatey installation failed >> "%LOG_FILE%"
+        echo ERROR: Chocolatey installation failed
+        pause
         exit /b 1
     )
-    
-    REM Refresh PATH environment variable to include Chocolatey
-    echo 🔍 Refreshing environment variables...
-    
-    REM Simple approach - just add Chocolatey to current PATH
     set "PATH=%PATH%;%ALLUSERSPROFILE%\chocolatey\bin"
-    echo 🔍 Chocolatey added to PATH for current session
-    
-    REM Verify Chocolatey is now accessible
-    choco --version >nul 2>&1
-    if errorlevel 1 (
-        echo ❌ Chocolatey installation completed but not accessible in PATH
-        echo 💡 Please restart the command prompt and run this installer again
-        echo.
-        echo Press any key to exit...
-        pause >nul
-        exit /b 1
-    )
-    
-    echo ✅ Chocolatey installed successfully and PATH updated
+    echo [OK] Chocolatey installed >> "%LOG_FILE%"
+    echo [OK] Chocolatey installed
 ) else (
-    echo ✅ Chocolatey already installed
+    echo [OK] Chocolatey already installed >> "%LOG_FILE%"
+    echo [OK] Chocolatey already installed
 )
 
-REM Check PowerShell 7
-echo 🔍 Checking for PowerShell 7...
- 
+echo.
+echo ========================================== >> "%LOG_FILE%"
+echo [STEP 2/4] INSTALLING POWERSHELL 7 >> "%LOG_FILE%"
+echo ========================================== >> "%LOG_FILE%"
+echo.
+echo [STEP 2/4] INSTALLING POWERSHELL 7
+
 pwsh --version >nul 2>&1
 if errorlevel 1 (
-    echo ⚠️  PowerShell 7 not found. Installing via Chocolatey...
+    echo [ACTION] Installing PowerShell 7... >> "%LOG_FILE%"
+    echo Installing PowerShell 7...
+    choco install powershell-core -y --no-progress >> "%LOG_FILE%" 2>&1
+    echo [OK] PowerShell 7 installed >> "%LOG_FILE%"
+    echo [OK] PowerShell 7 installed
+) else (
+    echo [OK] PowerShell 7 already installed >> "%LOG_FILE%"
+    echo [OK] PowerShell 7 already installed
+)
+
+echo.
+echo ========================================== >> "%LOG_FILE%"
+echo [STEP 3/4] ENABLING WSL >> "%LOG_FILE%"
+echo ========================================== >> "%LOG_FILE%"
+echo.
+echo [STEP 3/4] ENABLING WSL
+
+echo [ACTION] Enabling WSL features... >> "%LOG_FILE%"
+echo Enabling WSL features...
+dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart >> "%LOG_FILE%" 2>&1
+dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart >> "%LOG_FILE%" 2>&1
+wsl --update >> "%LOG_FILE%" 2>&1
+echo [OK] WSL features enabled >> "%LOG_FILE%"
+echo [OK] WSL features enabled
+
+echo.
+echo ========================================== >> "%LOG_FILE%"
+echo [STEP 4/4] INSTALLING DOCKER >> "%LOG_FILE%"
+echo ========================================== >> "%LOG_FILE%"
+echo.
+echo [STEP 4/4] INSTALLING DOCKER
+
+if "%DETECTED_ARCH%"=="ARM64" (
+    echo [INFO] ARM64 detected - direct download >> "%LOG_FILE%"
+    echo ARM64 detected - downloading Docker Desktop...
     
-    choco install powershell-core -y --no-progress
+    set "DOCKER_INSTALLER=%TEMP%\DockerDesktop-ARM64.exe"
+    powershell -Command "$url = 'https://desktop.docker.com/win/main/arm64/Docker Desktop Installer.exe'; $outFile = Join-Path $env:TEMP 'DockerDesktop-ARM64.exe'; Invoke-WebRequest -Uri $url -OutFile $outFile -UseBasicParsing; if (Test-Path $outFile) { exit 0 } else { exit 1 }" >> "%LOG_FILE%" 2>&1
+    
     if errorlevel 1 (
-        echo ❌ Failed to install PowerShell 7
-        
-        echo.
-        echo Press any key to exit...
-        pause >nul
+        echo [ERROR] Download failed >> "%LOG_FILE%"
+        echo ERROR: Download failed
+        pause
         exit /b 1
     )
     
-    REM PowerShell 7 should now be available in PATH after Chocolatey installation
-    echo 🔍 PowerShell 7 should now be available via Chocolatey PATH updates
-    
-    
-    echo ✅ PowerShell 7 installed successfully
-    
+    echo [ACTION] Installing Docker... >> "%LOG_FILE%"
+    echo Installing Docker Desktop...
+    start /wait "" "!DOCKER_INSTALLER!" install --accept-license >> "%LOG_FILE%" 2>&1
+    del "!DOCKER_INSTALLER!" >nul 2>&1
+    echo [OK] Docker installed >> "%LOG_FILE%"
+    echo [OK] Docker installed
 ) else (
-    echo ✅ PowerShell 7 already installed
-    
+    echo [INFO] x64 detected - Chocolatey install >> "%LOG_FILE%"
+    echo Installing Docker via Chocolatey...
+    choco install docker-desktop -y --no-progress --ignore-checksums >> "%LOG_FILE%" 2>&1
+    echo [OK] Docker installed >> "%LOG_FILE%"
+    echo [OK] Docker installed
 )
 
-REM Check WSL
-echo 🔍 Checking for WSL (Windows Subsystem for Linux)...
-
-
-echo 🔍 Starting WSL detection process (using crash-safe methods)...
-
-
-REM Check for WSL using safer methods that won't crash the script
-echo 🔍 Testing WSL availability using safe detection methods...
-
-
-REM Method 1: Check if WSL executable exists in system PATH
-set "WSL_AVAILABLE=1"
-set "WSL_CONFIGURED=1"
-
-echo 🔍 [DEBUG] About to check for wsl.exe in System32...
-
-
-REM Check if wsl.exe exists in System32
-if exist "%SystemRoot%\System32\wsl.exe" (
-    echo 🔍 WSL executable found in System32
-    set "WSL_AVAILABLE=0"
-    
-    REM Check WSL configuration using registry and file system (completely safe)
-    echo 🔍 Checking WSL configuration status using safe methods...
-    
-    
-    REM Check if any WSL distributions are installed by looking at registry
-    set "WSL_CONFIGURED=1"
-    
-    REM Method 1: Check WSL distribution registry entries
-    echo 🔍 [DEBUG] About to check WSL registry entries...
-    
-    
-    reg query "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss" >nul 2>&1
-    if not errorlevel 1 (
-        echo 🔍 WSL registry entries found
-        set "WSL_CONFIGURED=0"
-    ) else (
-        echo 🔍 [DEBUG] WSL registry check completed, no entries found
-        
-        echo 🔍 [DEBUG] About to check AppData for WSL distributions...
-        
-        
-        REM Method 2: Check AppData for WSL distributions using DIR command (safer than wildcards)
-        dir "%USERPROFILE%\AppData\Local\Packages\" 2>nul | find /i "Ubuntu" >nul 2>&1
-        if not errorlevel 1 (
-            echo 🔍 Ubuntu WSL distribution found in AppData
-            set "WSL_CONFIGURED=0"
-        ) else (
-            dir "%USERPROFILE%\AppData\Local\Packages\" 2>nul | find /i "Debian" >nul 2>&1
-            if not errorlevel 1 (
-                echo 🔍 Debian WSL distribution found in AppData
-                set "WSL_CONFIGURED=0"
-            ) else (
-                dir "%USERPROFILE%\AppData\Local\Packages\" 2>nul | find /i "openSUSE" >nul 2>&1
-                if not errorlevel 1 (
-                    echo 🔍 openSUSE WSL distribution found in AppData
-                    set "WSL_CONFIGURED=0"
-                ) else (
-                    echo 🔍 No WSL distributions detected in AppData Packages
-                )
-            )
-        )
-        
-        echo 🔍 [DEBUG] AppData WSL distribution check completed
-        
-    )
-    
-    if !WSL_CONFIGURED! equ 0 (
-        echo 🔍 WSL distributions detected via registry/filesystem check
-    ) else (
-        echo 🔍 No WSL distributions found - fresh installation needed
-    )
-) else (
-    echo 🔍 WSL executable not found in System32
-)
-
-echo 🔍 [DEBUG] WSL detection method 1 completed successfully
-
-
-REM Method 2: Check Windows features for WSL (alternative detection)
-if !WSL_AVAILABLE! neq 0 (
-    echo 🔍 Checking Windows optional features for WSL...
-    
-    
-    REM Use DISM to check if WSL feature is installed
-    dism /online /get-featureinfo /featurename:Microsoft-Windows-Subsystem-Linux 2>nul | find /i "State : Enabled" >nul 2>&1
-    if not errorlevel 1 (
-        echo 🔍 WSL Windows feature is enabled
-        set "WSL_AVAILABLE=0"
-    )
-)
-
-echo 🔍 [DEBUG] WSL detection method 2 completed successfully
-
-
-echo 🔍 [DEBUG] About to evaluate WSL_CONFIGURED status: !WSL_CONFIGURED!
-
-
-echo 🔍 [DEBUG] WSL_CONFIGURED variable value before if statement: !WSL_CONFIGURED!
-
-
-echo 🔍 [DEBUG] About to check WSL_CONFIGURED value...
-
-
-REM Use GOTO instead of IF to avoid any potential crashes with delayed expansion
-echo 🔍 [DEBUG] WSL_CONFIGURED value is: !WSL_CONFIGURED!
-
-
-if "!WSL_CONFIGURED!"=="0" goto wsl_already_configured
-goto wsl_needs_installation
-
-:wsl_already_configured
-echo 🔍 [DEBUG] WSL already configured - skipping installation
-
-echo ✅ WSL already installed and functional
-
-goto wsl_section_complete
-
-:wsl_needs_installation
-echo 🔍 [DEBUG] WSL needs installation - proceeding with setup
-    
-    echo ⚠️  WSL not found or not configured. Installing WSL2 (required for Docker Desktop)...
-    
-    
-    REM Enable WSL features using safer DISM commands
-    echo 🔍 Enabling WSL Windows features (this may take a few minutes)...
-    
-    
-    echo 🔍 Enabling Windows Subsystem for Linux feature...
-    dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
-    if errorlevel 1 (
-        echo ⚠️  Warning: WSL feature enable had issues but continuing...
-    ) else (
-        echo ✅ Windows Subsystem for Linux feature enabled successfully
-    )
-    
-    
-    echo 🔍 Enabling Virtual Machine Platform feature...
-    dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
-    if errorlevel 1 (
-        echo ⚠️  Warning: Virtual Machine Platform enable had issues but continuing...
-    ) else (
-        echo ✅ Virtual Machine Platform feature enabled successfully
-    )
-    
-    
-    echo 🔍 Enabling Windows Hypervisor Platform feature (required for Docker Desktop)...
-    echo 🔍 Method 1: Using DISM with HypervisorPlatform feature name...
-    dism.exe /online /enable-feature /featurename:HypervisorPlatform /all /norestart
-    set "HYPERV_RESULT1=%ERRORLEVEL%"
-    
-    if !HYPERV_RESULT1! neq 0 (
-        echo 🔍 Method 2: Using DISM with Microsoft-Hyper-V-Hypervisor feature name...
-        dism.exe /online /enable-feature /featurename:Microsoft-Hyper-V-Hypervisor /all /norestart
-        set "HYPERV_RESULT2=%ERRORLEVEL%"
-    ) else (
-        echo ✅ Windows Hypervisor Platform enabled successfully (Method 1)
-        set "HYPERV_RESULT2=0"
-    )
-    
-    if !HYPERV_RESULT1! neq 0 if !HYPERV_RESULT2! neq 0 (
-        echo 🔍 Method 3: Using PowerShell Enable-WindowsOptionalFeature...
-        powershell -Command "Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All -NoRestart" >nul 2>&1
-        set "HYPERV_RESULT3=%ERRORLEVEL%"
-        
-        if !HYPERV_RESULT3! neq 0 (
-            echo 🔍 Method 4: Using PowerShell with Microsoft-Hyper-V-Hypervisor...
-            powershell -Command "Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-Hypervisor -All -NoRestart" >nul 2>&1
-            set "HYPERV_RESULT4=%ERRORLEVEL%"
-            
-            if !HYPERV_RESULT4! neq 0 (
-                echo 🔍 Method 5: Using bcdedit to enable hypervisor...
-                bcdedit /set hypervisorlaunchtype auto >nul 2>&1
-                set "HYPERV_RESULT5=%ERRORLEVEL%"
-                
-                if !HYPERV_RESULT5! equ 0 (
-                    echo ✅ Hypervisor launch type set to auto via bcdedit
-                ) else (
-                    echo ⚠️  All automatic methods failed - manual intervention may be required
-                    echo 💡 Please manually enable "Windows Hypervisor Platform" in:
-                    echo    Control Panel → Programs → Turn Windows features on or off
-                )
-            ) else (
-                echo ✅ Windows Hypervisor Platform enabled successfully (Method 4)
-            )
-        ) else (
-            echo ✅ Windows Hypervisor Platform enabled successfully (Method 3)
-        )
-    )
-    
-    
-    echo 🔍 Enabling Hyper-V (if available on this Windows edition)...
-    dism.exe /online /enable-feature /featurename:Microsoft-Hyper-V /all /norestart >nul 2>&1
-    if errorlevel 1 (
-        echo ⚠️  Hyper-V not available (normal for Windows Home edition)
-    ) else (
-        echo ✅ Hyper-V feature enabled successfully
-    )
-    
-    
-    REM Install WSL2 kernel via Chocolatey
-    echo 🔍 Installing WSL2 kernel and components via Chocolatey...
-    
-    choco install wsl2 -y --no-progress
-    if errorlevel 1 (
-        echo ⚠️  Chocolatey WSL2 installation had issues, but features were enabled
-        echo 💡 WSL2 kernel update may be required after restart
-    )
-    
-    
-    REM Verify Windows features are enabled
-    echo 🔍 Verifying Windows features for Docker Desktop compatibility...
-    echo.
-    echo 🔍 Checking required Windows features status:
-    
-    REM Check WSL feature
-    dism /online /get-featureinfo /featurename:Microsoft-Windows-Subsystem-Linux 2>nul | find /i "State : Enabled" >nul 2>&1
-    if not errorlevel 1 (
-        echo ✅ Windows Subsystem for Linux: ENABLED
-    ) else (
-        echo ❌ Windows Subsystem for Linux: DISABLED
-    )
-    
-    REM Check Virtual Machine Platform
-    dism /online /get-featureinfo /featurename:VirtualMachinePlatform 2>nul | find /i "State : Enabled" >nul 2>&1
-    if not errorlevel 1 (
-        echo ✅ Virtual Machine Platform: ENABLED
-    ) else (
-        echo ❌ Virtual Machine Platform: DISABLED
-    )
-    
-    REM Check Hypervisor Platform (try multiple feature names)
-    set "HYPERV_ENABLED=0"
-    
-    dism /online /get-featureinfo /featurename:HypervisorPlatform 2>nul | find /i "State : Enabled" >nul 2>&1
-    if not errorlevel 1 set "HYPERV_ENABLED=1"
-    
-    if !HYPERV_ENABLED! equ 0 (
-        dism /online /get-featureinfo /featurename:Microsoft-Hyper-V-Hypervisor 2>nul | find /i "State : Enabled" >nul 2>&1
-        if not errorlevel 1 set "HYPERV_ENABLED=1"
-    )
-    
-    if !HYPERV_ENABLED! equ 1 (
-        echo ✅ Windows Hypervisor Platform: ENABLED
-    ) else (
-        echo ❌ Windows Hypervisor Platform: DISABLED
-        echo 💡 MANUAL FIX REQUIRED for Windows Hypervisor Platform:
-        echo    1. Press Win+R, type 'optionalfeatures' and press Enter
-        echo    2. Find and check ☑️ "Windows Hypervisor Platform"
-        echo    3. Click OK and restart when prompted
-        echo    4. Alternative: Run as Administrator: dism /online /enable-feature /featurename:HypervisorPlatform /all
-    )
-    
-    REM Check Hyper-V (optional, may not be available on all editions)
-    dism /online /get-featureinfo /featurename:Microsoft-Hyper-V 2>nul | find /i "State : Enabled" >nul 2>&1
-    if not errorlevel 1 (
-        echo ✅ Hyper-V: ENABLED
-    ) else (
-        echo ⚠️  Hyper-V: DISABLED (may not be available on Windows Home)
-    )
-    
-    echo.
-    echo 💡 NOTE: If any required features show as DISABLED, please:
-    echo    1. Restart your computer after installation completes
-    echo    2. Manually enable missing features in "Turn Windows features on or off"
-    echo    3. Required features: WSL, Virtual Machine Platform, Hypervisor Platform
-    echo.
-    
-    
-    REM Set WSL2 as default version via registry (completely safe method)
-    echo 🔍 Setting WSL2 as default version via registry...
-    
-    reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss" /v DefaultVersion /t REG_DWORD /d 2 /f >nul 2>&1
-    if errorlevel 1 (
-        echo ⚠️  WSL2 registry setting had issues, but will work after restart
-    ) else (
-        echo ✅ WSL2 default version configured via registry successfully
-    )
-    
-    
-    echo ✅ WSL2 installation and configuration completed
-    echo ⚠️  IMPORTANT: A system restart is required for WSL2 to be fully functional
-    
-
-:wsl_section_complete
-echo 🔍 WSL detection and configuration completed successfully
-
-
-REM Check Docker Desktop
-echo 🔍 Checking for Docker Desktop...
-timeout /t 2 >nul
-docker --version >nul 2>&1
-if errorlevel 1 goto :install_docker
-goto :docker_already_installed
-
-:install_docker
-echo ⚠️  Docker not found. Installing Docker Desktop...
-echo 🔍 Note: Docker Desktop requires WSL2 which should now be installed
-timeout /t 2 >nul
-
-REM Check if we're on ARM architecture and handle special case
-if "!DETECTED_ARCH!"=="ARM64" (
-    echo ⚠️  ARM64 architecture detected - Chocolatey Docker may install wrong architecture
-    echo 💡 ARM64 systems require specific Docker Desktop version
-    echo.
-    set /p "use_arm_docker=Install ARM64-specific Docker Desktop? (Y/n) [default: Y]: "
-    if "!use_arm_docker!"=="" set "use_arm_docker=y"
-    
-    if /i "!use_arm_docker!"=="y" (
-        echo 🔍 Downloading Docker Desktop for ARM64 architecture...
-        goto :install_arm64_docker
-    ) else (
-        echo 🔍 Continuing with Chocolatey installation (may install x64 version)...
-    )
-)
-
-echo 🔍 Attempting Docker Desktop installation via Chocolatey (method 1/4)...
-choco install docker-desktop -y --no-progress --ignore-checksums
-if errorlevel 1 goto :docker_manual_install
-
-echo ✅ Docker Desktop installed successfully via Chocolatey
-goto :docker_restart_required
-
-:install_arm64_docker
-echo 🔍 Installing Docker Desktop for ARM64 architecture...
-set "ARM64_DOCKER_URL=https://desktop.docker.com/win/main/arm64/Docker%%20Desktop%%20Installer.exe?utm_source=docker&utm_medium=webreferral&utm_campaign=docs-driven-download-win-arm64"
-set "ARM64_INSTALLER=docker-desktop-arm64-installer.exe"
-
-echo 🔍 Downloading Docker Desktop ARM64 installer...
-powershell -Command "Invoke-WebRequest -Uri 'https://desktop.docker.com/win/main/arm64/Docker Desktop Installer.exe' -OutFile '%ARM64_INSTALLER%'" 2>nul
-
-if exist "%ARM64_INSTALLER%" (
-    echo ✅ ARM64 Docker installer downloaded successfully
-    echo 🔍 Installing Docker Desktop for ARM64...
-    
-    REM Try installation with different methods
-    "%ARM64_INSTALLER%" install --quiet --accept-license >nul 2>&1
-    set "ARM64_EXIT_CODE=%ERRORLEVEL%"
-    
-    if !ARM64_EXIT_CODE! equ 0 (
-        echo ✅ Docker Desktop ARM64 installed successfully
-        del "%ARM64_INSTALLER%" >nul 2>&1
-        goto :docker_restart_required
-    ) else (
-        echo 🔍 Trying alternative ARM64 installation method...
-        start /wait "" "%ARM64_INSTALLER%" install --accept-license
-        if !ERRORLEVEL! equ 0 (
-            echo ✅ Docker Desktop ARM64 installed successfully (alternative method)
-            del "%ARM64_INSTALLER%" >nul 2>&1
-            goto :docker_restart_required
-        ) else (
-            echo ❌ ARM64 Docker installation failed
-            del "%ARM64_INSTALLER%" >nul 2>&1
-            goto :docker_manual_install
-        )
-    )
-) else (
-    echo ❌ Failed to download ARM64 Docker installer
-    echo 🔍 Falling back to standard installation methods...
-    goto :docker_manual_install
-)
-
-:docker_restart_required
 echo.
-echo ⚠️  RESTART REQUIRED AFTER DOCKER INSTALLATION!
+echo [ACTION] Configuring Docker startup... >> "%LOG_FILE%"
+echo Configuring Docker startup...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "Docker Desktop" /t REG_SZ /d "\"%ProgramFiles%\Docker\Docker\Docker Desktop.exe\"" /f >nul 2>&1
+
 echo.
-echo 🔄 Windows needs to restart to:
-echo    • Activate virtualization features (WSL2, Hypervisor Platform)
-echo    • Initialize Docker Desktop properly
-echo    • Enable Docker to detect virtualization capabilities
-echo.
-echo 💡 After restart:
-echo    1. Docker Desktop should start automatically
-echo    2. Run this installer again to complete Memshak setup
-echo    3. Or navigate to %INSTALL_DIR% and run: docker-compose up -d
+echo ========================================== >> "%LOG_FILE%"
+echo DOCKER INSTALLATION COMPLETE >> "%LOG_FILE%"
+echo ========================================== >> "%LOG_FILE%"
 echo.
 echo ==========================================
-echo   DOCKER INSTALLATION COMPLETED!
-echo   RESTART REQUIRED TO CONTINUE
+echo   DOCKER INSTALLATION COMPLETE
 echo ==========================================
 echo.
-echo Press any key to exit and restart your computer...
-pause >nul
+echo RESTART REQUIRED!
 echo.
-echo 🔄 Please restart your computer now and then:
-echo    • Run this installer again, OR
-echo    • Navigate to %INSTALL_DIR% and run: docker-compose up -d
+echo After restart, run this installer again.
 echo.
+pause
 exit /b 0
 
-:docker_manual_install
-echo ❌ Chocolatey Docker installation failed. Trying direct download method (method 2/4)...
-timeout /t 2 >nul
-
-REM Try downloading and installing Docker manually with enhanced error handling
-echo 🔍 Detecting system architecture for direct download...
-timeout /t 1 >nul
-        
-        REM Use the already detected architecture
-        if "!DETECTED_ARCH!"=="ARM64" (
-            set "ARCH=arm64"
-            set "ARCH_PATH=arm64"
-            echo 🔍 Using ARM64 architecture for Docker Desktop (Snapdragon/ARM processors)
-            echo 🔍 Preparing to download Docker Desktop for ARM64 architecture...
-        ) else (
-            set "ARCH=amd64"
-            set "ARCH_PATH=amd64"
-            echo 🔍 Using AMD64 architecture for Docker Desktop (Intel/AMD processors)
-            echo 🔍 Preparing to download Docker Desktop for AMD64 architecture...
-        )
-        echo ⚠️  WARNING: Docker Desktop installer is approximately 500-600MB
-        echo 💾 This will use significant bandwidth and disk space
-        echo.
-        set /p "download_docker=Continue with Docker Desktop download? (Y/n) [default: Y]: "
-        
-        REM Set default to y if user just pressed Enter
-        if "!download_docker!"=="" set "download_docker=y"
-        
-        REM Use GOTO to avoid variable expansion crashes
-        if /i "!download_docker!"=="y" goto :proceed_with_docker_download
-        if /i "!download_docker!"=="yes" goto :proceed_with_docker_download
-        goto :skip_docker_download
-
-:skip_docker_download
-        echo ⏭️  Skipping Docker Desktop automatic download
-        echo 💡 You can install Docker Desktop manually later from:
-        echo    🌐 https://www.docker.com/products/docker-desktop
-        timeout /t 2 >nul
-        goto :docker_section_complete
-
-:proceed_with_docker_download
-        
-        echo 🔍 Checking available disk space for Docker installation...
-        timeout /t 1 >nul
-        
-        REM Check free space on C: drive (Docker needs at least 4GB)
-        for /f "tokens=3" %%a in ('dir /-c "%SystemDrive%\" ^| find "bytes free"') do set "FREE_SPACE=%%a"
-        REM Remove commas from the number
-        set "FREE_SPACE=!FREE_SPACE:,=!"
-        
-        REM Check if we have at least 4GB (4,294,967,296 bytes) free
-        if !FREE_SPACE! lss 4294967296 (
-            echo ❌ Insufficient disk space for Docker Desktop installation
-            echo 💾 Available: !FREE_SPACE! bytes
-            echo 📋 Required: At least 4GB (4,294,967,296 bytes) free space
-            echo.
-            echo 💡 Please free up disk space and run the installer again
-            echo    - Delete temporary files
-            echo    - Empty Recycle Bin  
-            echo    - Run Disk Cleanup
-            echo    - Uninstall unused programs
-            timeout /t 5 >nul
-            goto :docker_section_complete
-        )
-        
-        echo ✅ Sufficient disk space available (!FREE_SPACE! bytes free)
-        
-        echo 🔍 Starting Docker Desktop download (this may take several minutes)...
-        timeout /t 2 >nul
-        
-        REM Set architecture-specific URLs and installer names
-        if "!ARCH!"=="arm64" (
-            set "DOCKER_URL=https://desktop.docker.com/win/main/arm64/Docker Desktop Installer.exe"
-            set "DOCKER_INSTALLER=docker-desktop-installer-arm64.exe"
-        ) else (
-            set "DOCKER_URL=https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe"
-            set "DOCKER_INSTALLER=docker-desktop-installer-amd64.exe"
-        )
-        
-        REM Check if installer already exists
-        if exist "%DOCKER_INSTALLER%" goto :verify_existing_installer
-        goto :start_fresh_download
-
-:verify_existing_installer
-        echo ✅ Docker installer already exists, verifying file...
-        REM Check file size to ensure it's not corrupted
-        timeout /t 2 >nul
-        for %%A in ("%DOCKER_INSTALLER%") do set "FILE_SIZE=%%~zA"
-        if !FILE_SIZE! gtr 400000000 goto :existing_installer_valid
-        goto :existing_installer_invalid
-
-:existing_installer_valid
-        echo ✅ Existing Docker installer appears valid (size: !FILE_SIZE! bytes)
-        echo 🔍 Skipping download, using existing installer...
-        timeout /t 2 >nul
-        goto :docker_downloaded_success
-
-:existing_installer_invalid
-        echo ⚠️  Existing installer seems too small (!FILE_SIZE! bytes), re-downloading...
-        timeout /t 2 >nul
-        del "%DOCKER_INSTALLER%" >nul 2>&1
-        goto :start_fresh_download
-
-:start_fresh_download
-        
-        echo 🔍 Attempting download method 1: Simple PowerShell download...
-        powershell -Command "Invoke-WebRequest -Uri '!DOCKER_URL!' -OutFile '%DOCKER_INSTALLER%'" 2>nul
-        
-        if exist "%DOCKER_INSTALLER%" goto :docker_downloaded_success
-        
-        echo 🔍 Attempting download method 2: PowerShell with basic parameters...
-        powershell -Command "$client = New-Object System.Net.WebClient; $client.DownloadFile('!DOCKER_URL!', '%DOCKER_INSTALLER%')" 2>nul
-        
-        if exist "%DOCKER_INSTALLER%" goto :docker_downloaded_success
-        
-        echo 🔍 Attempting download method 3: Using CURL (if available)...
-        curl -L -o "%DOCKER_INSTALLER%" "!DOCKER_URL!" >nul 2>&1
-        
-        if exist "%DOCKER_INSTALLER%" goto :docker_downloaded_success
-        goto :docker_download_failed
-
-:docker_downloaded_success
-        echo ✅ Docker Desktop downloaded successfully (!ARCH! architecture)
-        echo 🔍 Installing Docker Desktop...
-        timeout /t 2 >nul
-        
-        REM Verify file integrity before installation
-        echo 🔍 Verifying installer integrity...
-        timeout /t 2 >nul
-        if not exist "%DOCKER_INSTALLER%" (
-            echo ❌ Installer file disappeared, download may have failed
-            timeout /t 2 >nul
-            goto :docker_download_failed
-        )
-        
-        REM Check file size (Docker installer should be at least 400MB)
-        echo 🔍 Checking installer file size...
-        timeout /t 1 >nul
-        
-        REM Get file size safely
-        for %%A in ("%DOCKER_INSTALLER%") do set "FILE_SIZE=%%~zA"
-        
-        REM Check if FILE_SIZE is empty or invalid
-        if "!FILE_SIZE!"=="" goto :file_size_check_failed
-        if "!FILE_SIZE!"=="0" goto :file_size_too_small
-        
-        REM Use GOTO to avoid crashes with large number comparisons
-        if !FILE_SIZE! lss 400000000 goto :file_size_too_small
-        goto :file_size_check_passed
-
-:file_size_check_failed
-        echo ⚠️  Could not determine file size, proceeding with installation...
-        timeout /t 2 >nul
-        goto :file_size_check_passed
-
-:file_size_too_small
-        echo ⚠️  Downloaded file seems too small (!FILE_SIZE! bytes), may be corrupted
-        echo 🔍 Attempting installation anyway...
-        timeout /t 2 >nul
-        goto :file_size_check_passed
-
-:file_size_check_passed
-        
-        REM Try multiple installation methods
-        echo 🔍 Installation attempt 1: Standard quiet install...
-        "%DOCKER_INSTALLER%" install --quiet --accept-license >nul 2>&1
-        set "DOCKER_EXIT_CODE=%ERRORLEVEL%"
-        
-        if !DOCKER_EXIT_CODE! equ 0 goto :docker_install_success
-        
-        echo 🔍 Installation attempt 2: Alternative parameters...
-        "%DOCKER_INSTALLER%" --quiet --accept-license >nul 2>&1
-        set "DOCKER_EXIT_CODE=%ERRORLEVEL%"
-        
-        if !DOCKER_EXIT_CODE! equ 0 goto :docker_install_success
-        
-        echo 🔍 Installation attempt 3: Without quiet mode...
-        start /wait "" "%DOCKER_INSTALLER%" install --accept-license
-        set "DOCKER_EXIT_CODE=%ERRORLEVEL%"
-        
-        if !DOCKER_EXIT_CODE! equ 0 goto :docker_install_success
-        goto :docker_install_warning
-
-:docker_install_success
-        echo ✅ Docker Desktop installed successfully
-        del "%DOCKER_INSTALLER%" >nul 2>&1
-        goto :docker_restart_required
-
-:docker_install_warning
-        echo ⚠️  Docker Desktop installation completed with exit code: %ERRORLEVEL%
-        echo 💡 This may be normal - Docker sometimes reports non-zero exit codes on success
-        del "%DOCKER_INSTALLER%" >nul 2>&1
-        goto :docker_restart_required
-
-:configure_docker
-REM Configure Docker for startup regardless of exit code
-echo 🔍 Configuring Docker for automatic startup...
-timeout /t 2 >nul
-
-REM Add Docker to startup in multiple ways to ensure it starts
-echo 🔍 Adding Docker Desktop to Windows startup (User Registry)...
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "Docker Desktop" /t REG_SZ /d "\"%ProgramFiles%\Docker\Docker\Docker Desktop.exe\"" /f >nul 2>&1
-
-echo 🔍 Adding Docker Desktop to Windows startup (System Registry)...
-reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "Docker Desktop" /t REG_SZ /d "\"%ProgramFiles%\Docker\Docker\Docker Desktop.exe\"" /f >nul 2>&1
-
-REM Also create a startup folder shortcut as backup
-echo 🔍 Creating startup folder shortcut for Docker Desktop...
-set "STARTUP_FOLDER=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
-powershell -Command "if (Test-Path '%ProgramFiles%\Docker\Docker\Docker Desktop.exe') { $WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%STARTUP_FOLDER%\Docker Desktop.lnk'); $Shortcut.TargetPath = '%ProgramFiles%\Docker\Docker\Docker Desktop.exe'; $Shortcut.Save() }" >nul 2>&1
-
-echo ✅ Docker Desktop configured for automatic startup (multiple methods)
-
-REM Try to start Docker Desktop
-if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :docker_exe_found
-goto :docker_exe_not_found
-
-:docker_exe_found
-echo ✅ Docker Desktop executable found, starting service...
-start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" >nul 2>&1
-timeout /t 15 >nul
-echo ✅ Docker Desktop startup initiated
-goto :docker_startup_complete
-
-:docker_exe_not_found
-echo ⚠️  Docker Desktop executable not found in expected location
-echo 💡 Manual installation may be required: https://www.docker.com/products/docker-desktop
-goto :docker_startup_complete
-
-:docker_startup_complete
-goto :end_docker_manual_install
-
-:docker_download_failed
-echo ❌ Failed to download Docker Desktop installer via direct download
-echo 🔍 Trying alternative download method...
-timeout /t 2 >nul
-goto :try_amd64_fallback
-
-:try_amd64_fallback
-echo 🔍 Trying fallback to AMD64 architecture (method 3/4)...
-set "ARCH=amd64"
-set "DOCKER_INSTALLER=docker-desktop-installer-amd64.exe"
-
-echo 🔍 AMD64 fallback - Simple PowerShell download...
-powershell -Command "Invoke-WebRequest -Uri 'https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe' -OutFile '%DOCKER_INSTALLER%'" 2>nul
-
-if exist "%DOCKER_INSTALLER%" goto :amd64_fallback_success
-
-echo 🔍 AMD64 fallback - WebClient download...
-powershell -Command "$client = New-Object System.Net.WebClient; $client.DownloadFile('https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe', '%DOCKER_INSTALLER%')" 2>nul
-
-if exist "%DOCKER_INSTALLER%" goto :amd64_fallback_success
-
-echo 🔍 AMD64 fallback - CURL download...
-curl -L -o "%DOCKER_INSTALLER%" "https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe" >nul 2>&1
-
-if exist "%DOCKER_INSTALLER%" goto :amd64_fallback_success
-goto :winget_install_attempt
-
-:amd64_fallback_success
-echo ✅ Alternative download method successful
-goto :docker_downloaded_success
-
-:winget_install_attempt
-echo 🔍 Trying Winget package manager installation (method 3/4)...
-timeout /t 2 >nul
-
-REM Check if winget is available
-winget --version >nul 2>&1
-if errorlevel 1 goto :chocolatey_fallback_attempt
-
-echo 🔍 Attempting Docker Desktop installation via Winget...
-winget install Docker.DockerDesktop --accept-source-agreements --accept-package-agreements --silent >nul 2>&1
-if errorlevel 1 goto :chocolatey_fallback_attempt
-
-echo ✅ Docker Desktop installed successfully via Winget
-timeout /t 2 >nul
-
-REM Verify Winget installation worked
-echo 🔍 Verifying Winget Docker installation...
-timeout /t 5 >nul
-if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :docker_restart_required
-
-echo ⚠️  Winget installation completed but Docker executable not found, trying next method...
-goto :chocolatey_fallback_attempt
-
-:chocolatey_fallback_attempt
-echo 🔍 Trying Chocolatey package manager installation (method 4/4)...
-timeout /t 2 >nul
-
-echo 🔍 Attempting Docker Desktop installation via Chocolatey (standard)...
-choco install docker-desktop -y --no-progress --ignore-checksums >nul 2>&1
-if errorlevel 1 goto :docker_choco_alternative_fallback
-
-echo ✅ Docker Desktop installed successfully via Chocolatey
-timeout /t 2 >nul
-
-REM Verify Chocolatey installation worked
-echo 🔍 Verifying Chocolatey Docker installation...
-timeout /t 5 >nul
-if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :docker_restart_required
-
-echo ⚠️  Chocolatey installation completed but Docker executable not found, trying alternative method...
-goto :docker_choco_alternative_fallback
-
-:docker_choco_alternative_fallback
-echo 🔍 Trying alternative Chocolatey method...
-choco install docker-desktop -y --force --ignore-checksums --allow-empty-checksums >nul 2>&1
-if errorlevel 1 goto :all_docker_install_methods_failed
-
-echo ✅ Docker Desktop installed successfully via Chocolatey (alternative method)
-timeout /t 2 >nul
-
-REM Verify alternative Chocolatey installation worked
-echo 🔍 Verifying alternative Chocolatey Docker installation...
-timeout /t 5 >nul
-if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" goto :docker_restart_required
-
-echo ⚠️  All Chocolatey methods completed but Docker executable not found
-goto :all_docker_install_methods_failed
-
-:all_docker_install_methods_failed
-echo ❌ All Docker installation methods failed (Direct Download, Architecture-specific, Winget, Chocolatey)
+:install_memshak_files
+echo ========================================== >> "%LOG_FILE%"
+echo [STEP 1/3] DOWNLOADING MEMSHAK >> "%LOG_FILE%"
+echo ========================================== >> "%LOG_FILE%"
 echo.
-echo 💡 MANUAL INSTALLATION REQUIRED:
-echo.
-echo 📥 Download Docker Desktop manually from:
-echo    🌐 https://www.docker.com/products/docker-desktop
-echo.
-echo 💻 Architecture-specific direct download URLs:
-echo    • x64/AMD64 (Intel/AMD): https://desktop.docker.com/win/main/amd64/Docker Desktop Installer.exe
-echo    • ARM64 (Snapdragon): https://desktop.docker.com/win/main/arm64/Docker Desktop Installer.exe
-echo.
-echo 🔍 Your detected architecture: !DETECTED_ARCH!
-if "!DETECTED_ARCH!"=="ARM64" (
-    echo 💡 For ARM64/Snapdragon systems, use the ARM64 installer for best compatibility
-)
-echo.
-echo 🔧 After manual installation:
-echo    1. RESTART your computer (required for virtualization features)
-echo    2. Ensure Docker Desktop is running (check system tray)
-echo    3. Open Command Prompt as Administrator
-echo    4. Navigate to: %INSTALL_DIR%
-echo    5. Run: docker-compose up -d
-echo.
-echo ⚠️  IMPORTANT: A restart is required after Docker installation to:
-echo    • Activate Windows virtualization features
-echo    • Enable Docker to detect WSL2 and Hypervisor Platform
-echo    • Ensure Docker Desktop starts properly
-echo.
-echo 💡 Common Docker installation issues and solutions:
-echo    • Insufficient disk space - free up at least 4GB
-echo    • Antivirus blocking - temporarily disable real-time protection
-echo    • Windows version too old - requires Windows 10/11 with WSL2 support
-echo    • Network restrictions - check corporate firewall/proxy settings
-echo    • Missing restart after Windows feature changes
-echo.
-goto :end_docker_manual_install
-
-:end_docker_manual_install
-goto :docker_section_complete
-
-:docker_choco_success
-echo ✅ Docker Desktop installed successfully via Chocolatey
-timeout /t 2 >nul
-
-REM Configure Docker for startup
-echo 🔍 Configuring Docker for automatic startup...
-
-REM Add Docker to startup in multiple ways to ensure it starts
-echo 🔍 Adding Docker Desktop to Windows startup (User Registry)...
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "Docker Desktop" /t REG_SZ /d "\"%ProgramFiles%\Docker\Docker\Docker Desktop.exe\"" /f >nul 2>&1
-
-echo 🔍 Adding Docker Desktop to Windows startup (System Registry)...
-reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "Docker Desktop" /t REG_SZ /d "\"%ProgramFiles%\Docker\Docker\Docker Desktop.exe\"" /f >nul 2>&1
-
-REM Also create a startup folder shortcut as backup
-echo 🔍 Creating startup folder shortcut for Docker Desktop...
-set "STARTUP_FOLDER=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
-powershell -Command "if (Test-Path '%ProgramFiles%\Docker\Docker\Docker Desktop.exe') { $WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%STARTUP_FOLDER%\Docker Desktop.lnk'); $Shortcut.TargetPath = '%ProgramFiles%\Docker\Docker\Docker Desktop.exe'; $Shortcut.Save() }" >nul 2>&1
-
-echo ✅ Docker Desktop configured for automatic startup (multiple methods)
-
-REM Start Docker Desktop
-echo 🔍 Starting Docker Desktop...
-start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" >nul 2>&1
-timeout /t 20 >nul 2>&1
-goto :docker_section_complete
-
-:docker_already_installed
-echo ✅ Docker Desktop already installed
-timeout /t 2 >nul
-goto :docker_section_complete
-
-:docker_section_complete
-
-echo.
-echo [STEP 2/7] Downloading deployment package...
-echo.
+echo [STEP 1/3] DOWNLOADING MEMSHAK
 
 set "DOWNLOAD_URL=https://github.com/mickeyklai/memshak-deployment/archive/refs/heads/main.zip"
-set "TEMP_ZIP=deployment.zip"
+set "TEMP_ZIP=%TEMP%\memshak-deploy.zip"
 
-echo 🔍 Downloading from: %DOWNLOAD_URL%
-powershell -Command "Invoke-WebRequest -Uri '%DOWNLOAD_URL%' -OutFile '%TEMP_ZIP%' -UserAgent 'Memshak-CDN/3.0' -TimeoutSec 60"
+echo [ACTION] Downloading package... >> "%LOG_FILE%"
+echo Downloading package...
+powershell -Command "Invoke-WebRequest -Uri '%DOWNLOAD_URL%' -OutFile '%TEMP_ZIP%' -UseBasicParsing" >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
-    echo ❌ Failed to download deployment package
-    echo.
-    echo Press any key to exit...
-    pause >nul
+    echo [ERROR] Download failed >> "%LOG_FILE%"
+    echo ERROR: Download failed
+    pause
     exit /b 1
 )
-echo ✅ Deployment package downloaded successfully
+echo [OK] Download complete >> "%LOG_FILE%"
+echo [OK] Download complete
 
 echo.
-echo [STEP 3/7] Extracting deployment package...
+echo ========================================== >> "%LOG_FILE%"
+echo [STEP 2/3] EXTRACTING FILES >> "%LOG_FILE%"
+echo ========================================== >> "%LOG_FILE%"
 echo.
+echo [STEP 2/3] EXTRACTING FILES
 
-powershell -Command "Expand-Archive -Path '%TEMP_ZIP%' -DestinationPath '.' -Force"
+echo [ACTION] Extracting archive... >> "%LOG_FILE%"
+echo Extracting archive...
+powershell -Command "Expand-Archive -Path '%TEMP_ZIP%' -DestinationPath '%TEMP%' -Force" >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
-    echo ❌ Failed to extract deployment package
-    echo.
-    echo Press any key to exit...
-    pause >nul
+    echo [ERROR] Extraction failed >> "%LOG_FILE%"
+    echo ERROR: Extraction failed
+    pause
     exit /b 1
 )
+echo [OK] Extracted >> "%LOG_FILE%"
+echo [OK] Extracted
 
-del "%TEMP_ZIP%" >nul 2>&1
+echo [ACTION] Finding extracted directory... >> "%LOG_FILE%"
+set "EXTRACTED_DIR="
+for /d %%i in ("%TEMP%\memshak-deployment-*") do (
+    echo [FOUND] %%i >> "%LOG_FILE%"
+    set "EXTRACTED_DIR=%%i"
+)
 
-REM Find extracted directory
-for /d %%i in (memshak-deployment-*) do set "EXTRACTED_DIR=%%i"
 if not defined EXTRACTED_DIR (
-    echo ❌ Could not find extracted deployment directory
-    echo.
-    echo Press any key to exit...
-    pause >nul
+    echo [ERROR] Extracted directory not found >> "%LOG_FILE%"
+    echo ERROR: Extracted directory not found
+    pause
     exit /b 1
 )
 
-echo ✅ Deployment package extracted to: %EXTRACTED_DIR%
-
-echo.
-echo [STEP 4/7] Setting up Memshak system...
-echo.
-
-REM Create installation directory
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
-REM Copy deployment files
-xcopy "%EXTRACTED_DIR%\*" "%INSTALL_DIR%\" /e /h /y >nul 2>&1
+echo [ACTION] Copying files... >> "%LOG_FILE%"
+echo Copying files to: %INSTALL_DIR%
+xcopy "%EXTRACTED_DIR%\*" "%INSTALL_DIR%\" /e /h /y /i >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
-    echo ❌ Failed to copy deployment files
-    echo.
-    echo Press any key to exit...
-    pause >nul
+    echo [ERROR] Copy failed - exit code: %ERRORLEVEL% >> "%LOG_FILE%"
+    echo ERROR: File copy failed
+    pause
+    exit /b 1
+)
+echo [OK] Files copied >> "%LOG_FILE%"
+echo [OK] Files copied
+
+echo [ACTION] Verifying files... >> "%LOG_FILE%"
+if exist "%INSTALL_DIR%\docker-compose.yml" (
+    echo [OK] docker-compose.yml found >> "%LOG_FILE%"
+    echo [OK] docker-compose.yml found
+) else (
+    echo [WARNING] docker-compose.yml NOT found >> "%LOG_FILE%"
+    echo [WARNING] docker-compose.yml NOT found
+)
+
+echo [ACTION] Cleaning up... >> "%LOG_FILE%"
+del "%TEMP_ZIP%" >nul 2>&1
+timeout /t 2 >nul
+start /wait /min cmd /c "rmdir /s /q "%EXTRACTED_DIR%" 2>nul"
+echo [OK] Cleanup complete >> "%LOG_FILE%"
+
+echo.
+echo ========================================== >> "%LOG_FILE%"
+echo [STEP 3/3] STARTING SERVICES >> "%LOG_FILE%"
+echo ========================================== >> "%LOG_FILE%"
+echo.
+echo [STEP 3/3] STARTING SERVICES
+
+echo [ACTION] Changing to install directory >> "%LOG_FILE%"
+cd /d "%INSTALL_DIR%"
+
+if not exist "start-local.bat" (
+    echo [ERROR] start-local.bat not found! >> "%LOG_FILE%"
+    echo ERROR: start-local.bat not found in %INSTALL_DIR%
+    pause
     exit /b 1
 )
 
-echo ✅ Memshak system files installed to: %INSTALL_DIR%
-
-REM Clean up extracted directory
-rmdir /s /q "%EXTRACTED_DIR%" >nul 2>&1
-
+echo [INFO] Found start-local.bat >> "%LOG_FILE%"
+echo Found start-local.bat
 echo.
-echo [STEP 5/7] Setting up Docker services...
+echo Starting Memshak services...
 echo.
 
-REM Change to installation directory
-cd /d "%INSTALL_DIR%"
+echo [ACTION] Calling start-local.bat >> "%LOG_FILE%"
+call start-local.bat
 
-REM Check if Docker is available and start services
-if exist "docker-compose.yml" (
-    echo 🔍 Waiting for Docker to be ready...
-    timeout /t 3 >nul
-    
-    REM Extended wait for Docker with progress indicators (timeout after 3 minutes)
-    set /a "timeout=180"
-    set /a "elapsed=0"
-    set /a "check_interval=10"
-    
-    :docker_wait
-    echo 🔍 Checking Docker status... (elapsed: !elapsed!s / max: %timeout%s)
-    docker info >nul 2>&1
-    if not errorlevel 1 goto docker_ready
-    
-    REM Check if Docker Desktop process is running
-    tasklist /FI "IMAGENAME eq Docker Desktop.exe" 2>nul | find /I "Docker Desktop.exe" >nul 2>&1
-    if errorlevel 1 (
-        echo 🔍 Docker Desktop not running, attempting to start...
-        if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" (
-            start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" >nul 2>&1
-            echo 🔍 Docker Desktop start command sent...
-        )
-    ) else (
-        echo 🔍 Docker Desktop is running, waiting for Docker daemon...
-    )
-    
-    timeout /t %check_interval% >nul 2>&1
-    set /a "elapsed+=%check_interval%"
-    if %elapsed% lss %timeout% goto docker_wait
-    
-    echo ⚠️  Docker not ready after %timeout% seconds
-    echo 💡 Possible solutions:
-    echo    • Restart computer and try again
-    echo    • Manually start Docker Desktop from Start Menu
-    echo    • Check if WSL2 is properly configured
-    echo    • Run: docker-compose up -d manually in %INSTALL_DIR%
-    goto skip_docker
-    
-    :docker_ready
-    echo ✅ Docker is ready after !elapsed! seconds
-    echo 🔍 Building and starting Docker services...
-    timeout /t 2 >nul
-    
-    REM Try to start services with better error handling
-    docker-compose up --build -d --remove-orphans
-    set "COMPOSE_EXIT_CODE=%ERRORLEVEL%"
-    
-    if !COMPOSE_EXIT_CODE! equ 0 (
-        echo ✅ Docker services started successfully
-        timeout /t 2 >nul
-        
-        REM Show running containers
-        echo 🔍 Active containers:
-        docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>nul
-    ) else (
-        echo ⚠️  Docker services failed to start (exit code: !COMPOSE_EXIT_CODE!)
-        echo 💡 This may be resolved by:
-        echo    • Restarting your computer
-        echo    • Running: docker-compose up -d manually
-        echo    • Checking Docker Desktop logs
-    )
-    
-    :skip_docker
-) else (
-    echo ⚠️  No docker-compose.yml found in %INSTALL_DIR%
-    echo 💡 Skipping Docker service setup
-    timeout /t 2 >nul
+echo.
+echo [INFO] start-local.bat completed >> "%LOG_FILE%"
+echo.
+echo [ACTION] Creating shortcuts >> "%LOG_FILE%"
+powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%USERPROFILE%\Desktop\Memshak.lnk'); $Shortcut.TargetPath = 'https://localhost:8443'; $Shortcut.Save()" >> "%LOG_FILE%" 2>&1
+
+echo.
+echo [INFO] Installation completed >> "%LOG_FILE%"
+echo ==========================================
+echo   INSTALLATION COMPLETED
+echo ==========================================
+echo.
+echo Location: %INSTALL_DIR%
+echo URL: https://localhost:8443
+echo Log: %LOG_FILE%
+echo.
+echo Memshak should be accessible at https://localhost:8443
+echo Wait 1-2 minutes for services to initialize.
+echo.
+pause
+exit /b 0 [STEP 2/3] EXTRACTING FILES
+
+echo [ACTION] Extracting archive... >> "%LOG_FILE%"
+echo Extracting archive...
+powershell -Command "Expand-Archive -Path '%TEMP_ZIP%' -DestinationPath '%TEMP%' -Force" >> "%LOG_FILE%" 2>&1
+if errorlevel 1 (
+    echo [ERROR] Extraction failed >> "%LOG_FILE%"
+    echo ERROR: Extraction failed
+    pause
+    exit /b 1
+)
+echo [OK] Extracted >> "%LOG_FILE%"
+echo [OK] Extracted
+
+echo [ACTION] Finding extracted directory... >> "%LOG_FILE%"
+set "EXTRACTED_DIR="
+for /d %%i in ("%TEMP%\memshak-deployment-*") do (
+    echo [FOUND] %%i >> "%LOG_FILE%"
+    set "EXTRACTED_DIR=%%i"
 )
 
+if not defined EXTRACTED_DIR (
+    echo [ERROR] Extracted directory not found >> "%LOG_FILE%"
+    echo ERROR: Extracted directory not found
+    pause
+    exit /b 1
+)
+
+if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+
+echo [ACTION] Copying files... >> "%LOG_FILE%"
+echo Copying files to: %INSTALL_DIR%
+xcopy "%EXTRACTED_DIR%\*" "%INSTALL_DIR%\" /e /h /y /i >> "%LOG_FILE%" 2>&1
+if errorlevel 1 (
+    echo [ERROR] Copy failed - exit code: %ERRORLEVEL% >> "%LOG_FILE%"
+    echo ERROR: File copy failed
+    pause
+    exit /b 1
+)
+echo [OK] Files copied >> "%LOG_FILE%"
+echo [OK] Files copied
+
+echo [ACTION] Verifying files... >> "%LOG_FILE%"
+if exist "%INSTALL_DIR%\docker-compose.yml" (
+    echo [OK] docker-compose.yml found >> "%LOG_FILE%"
+    echo [OK] docker-compose.yml found
+) else (
+    echo [WARNING] docker-compose.yml NOT found >> "%LOG_FILE%"
+    echo [WARNING] docker-compose.yml NOT found
+    echo [INFO] Files in install directory: >> "%LOG_FILE%"
+    dir "%INSTALL_DIR%" /b >> "%LOG_FILE%"
+)
+
+echo [ACTION] Cleaning up... >> "%LOG_FILE%"
+del "%TEMP_ZIP%" >nul 2>&1
+timeout /t 2 >nul
+start /wait /min cmd /c "rmdir /s /q "%EXTRACTED_DIR%" 2>nul"
+echo [OK] Cleanup complete >> "%LOG_FILE%"
+
 echo.
-echo [STEP 6/7] Creating shortcuts and startup configuration...
+echo ========================================== >> "%LOG_FILE%"
+echo [STEP 3/3] STARTING DOCKER SERVICES >> "%LOG_FILE%"
+echo ========================================== >> "%LOG_FILE%"
+echo.
+echo [STEP 3/3] STARTING DOCKER SERVICES
 echo.
 
-REM Create desktop shortcut using PowerShell
-echo 🔍 Creating desktop shortcut...
-powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%USERPROFILE%\Desktop\Memshak.lnk'); $Shortcut.TargetPath = 'http://localhost:4200'; $Shortcut.Save()"
-echo ✅ Desktop shortcut created
+cd /d "%INSTALL_DIR%" >> "%LOG_FILE%" 2>&1
 
-REM Create start menu shortcut
-echo 🔍 Creating start menu shortcut...
-set "START_MENU_PATH=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Memshak"
-if not exist "%START_MENU_PATH%" mkdir "%START_MENU_PATH%"
-powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%START_MENU_PATH%\Memshak.lnk'); $Shortcut.TargetPath = 'http://localhost:4200'; $Shortcut.Save()"
-echo ✅ Start menu shortcut created
-
-echo.
-echo [STEP 7/7] Installation complete!
-echo.
-
-echo ==========================================
-echo   INSTALLATION COMPLETED SUCCESSFULLY!
-echo ==========================================
-echo.
-echo 🎉 Memshak system has been installed with all prerequisites!
-echo.
-echo 📍 Installation Location: %INSTALL_DIR%
-echo 🌐 Access URL: http://localhost:4200
-echo 📱 Desktop Shortcut: Created
-echo 🐳 Docker Services: Configured for auto-start
-echo.
-echo 🔧 INSTALLED COMPONENTS:
-echo ✅ Chocolatey Package Manager
-echo ✅ PowerShell 7
-echo ✅ Docker Desktop (with auto-start)
-echo ✅ WSL (Windows Subsystem for Linux)
-echo ✅ Memshak Application Services
-echo.
-echo 🚀 NEXT STEPS:
-echo 1. Restart your computer to ensure all components are fully active
-echo 2. After restart, Docker Desktop should start automatically
-echo 3. Wait 2-3 minutes for Docker services to initialize
-echo 4. Open Memshak via desktop shortcut or navigate to http://localhost:4200
-echo.
-echo 💡 TROUBLESHOOTING:
-echo If Docker installation failed or services don't start:
-echo    • Download Docker Desktop manually: https://www.docker.com/products/docker-desktop
-echo    • After manual installation, navigate to %INSTALL_DIR%
-echo    • Run: docker-compose up -d
-echo    • Check Docker Desktop is running from system tray
-echo.
-echo 💡 If Memshak doesn't load after restart:
-echo    • Open Docker Desktop and ensure it's running
-echo    • Open Command Prompt as Administrator
-echo    • Navigate to: %INSTALL_DIR%
-echo    • Run: docker-compose up -d
-echo    • Wait 2-3 minutes then try http://localhost:4200
-echo.
-
-set /p "restart=Would you like to restart now? (recommended) (Y/n) [default: Y]: "
-if "!restart!"=="" set "restart=y"
-if /i "!restart!"=="y" (
+if not exist "docker-compose.yml" (
+    echo [ERROR] docker-compose.yml not found! >> "%LOG_FILE%"
+    echo ERROR: docker-compose.yml not found in %INSTALL_DIR%
     echo.
-    echo 🔄 Restarting system in 10 seconds...
-    echo Press Ctrl+C to cancel
-    timeout /t 20
-    shutdown /r /f /t 0
+    pause
+    exit /b 1
+)
+
+echo [INFO] Found docker-compose.yml >> "%LOG_FILE%"
+echo Found docker-compose.yml
+echo.
+echo Checking if Docker is ready...
+echo.
+
+docker info >nul 2>&1
+if not errorlevel 1 (
+    echo [OK] Docker is ready >> "%LOG_FILE%"
+    echo Docker is ready!
+    goto start_services
+)
+
+echo [INFO] Docker not ready, attempting to start Docker Desktop... >> "%LOG_FILE%"
+echo Docker not ready, checking if Docker Desktop needs to be started...
+
+tasklist /FI "IMAGENAME eq Docker Desktop.exe" 2>nul | find /I "Docker Desktop.exe" >nul 2>&1
+if errorlevel 1 (
+    if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" (
+        echo [ACTION] Starting Docker Desktop... >> "%LOG_FILE%"
+        echo Starting Docker Desktop...
+        start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" >nul 2>&1
+        echo Waiting for Docker Desktop to initialize (this may take 1-2 minutes)...
+    ) else (
+        echo [ERROR] Docker Desktop not found >> "%LOG_FILE%"
+        echo ERROR: Docker Desktop executable not found
+        echo Please install Docker Desktop manually
+        pause
+        exit /b 1
+    )
 ) else (
-    echo ⚠️  Please restart your computer manually when convenient
-    echo 💡 This ensures all components work properly
+    echo Docker Desktop is running, waiting for it to be ready...
 )
 
 echo.
+echo Waiting for Docker daemon...
+set "max_wait=180"
+set "wait_count=0"
+
+:wait_loop
+timeout /t 10 >nul 2>&1
+set /a wait_count+=10
+echo Waiting... %wait_count%/%max_wait% seconds
+
+docker info >nul 2>&1
+if not errorlevel 1 goto start_services
+
+if %wait_count% lss %max_wait% goto wait_loop
+
+echo.
+echo [WARNING] Docker not ready after %max_wait% seconds >> "%LOG_FILE%"
+echo WARNING: Docker did not become ready after %max_wait% seconds
+echo.
+echo Please:
+echo 1. Ensure Docker Desktop is running
+echo 2. Wait for it to fully start
+echo 3. Then run: cd %INSTALL_DIR% ^&^& docker-compose up -d
+echo.
+pause
+exit /b 0
+
+:start_services
+echo.
+echo [OK] Docker ready >> "%LOG_FILE%"
+echo Docker is ready!
+echo.
+echo Starting services in background...
+echo.
+
+docker-compose up -d --remove-orphans
+
+if errorlevel 1 (
+    echo [WARNING] Services start had issues >> "%LOG_FILE%"
+    echo WARNING: Docker Compose had issues
+    echo Check logs with: docker-compose logs
+) else (
+    echo [OK] Services started >> "%LOG_FILE%"
+    echo [OK] All services started successfully!
+    echo.
+    echo Running containers:
+    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+)
+
+echo.
+echo [ACTION] Creating shortcuts... >> "%LOG_FILE%"
+powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%USERPROFILE%\Desktop\Memshak.lnk'); $Shortcut.TargetPath = 'https://localhost:8443'; $Shortcut.Save()" >> "%LOG_FILE%" 2>&1
+
+echo.
 echo ==========================================
-echo Installation process completed!
-echo Press any key to close this window...
+echo   INSTALLATION COMPLETED
 echo ==========================================
-pause >nul
+echo.
+echo Location: %INSTALL_DIR%
+echo URL: https://localhost:8443
+echo Log: %LOG_FILE%
+echo.
+echo Press Ctrl+C to stop services, or close this window when done.
+echo.
+pause
+exit /b 0
