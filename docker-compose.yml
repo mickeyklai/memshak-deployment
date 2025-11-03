@@ -21,6 +21,7 @@ services:
   # Frontend service (Angular) - using remote image
   frontend:
     image: mickeyklai/memshak-frontend:latest
+    platform: linux/amd64
     container_name: memshak-frontend
     # No external port mapping - only accessible through nginx proxy
     environment:
@@ -32,6 +33,7 @@ services:
   # Backend service (Express) - using remote image
   backend:
     image: mickeyklai/memshak-backend:latest
+    platform: linux/amd64
     container_name: memshak-backend
     # No external port mapping - only accessible through frontend proxy
     environment:
