@@ -65,10 +65,18 @@ function Send-ErrorResponse {
     Send-HttpResponse -Context $Context -StatusCode $StatusCode -Body $errorResponse
 }
 
+# Global tracking for in-process auth execution (enables credential caching!)
+$Global:AuthScriptContent = $null
+$Global:FirstAuthTime = $null
+$Global:AuthCallCount = 0
+$Global:LastAuthTime = $null
+
 function Invoke-AuthScript {
     param(
         [string]$ClientIds = "",
-        [string]$StationId = "DOCKER"
+        [string]$StationId = "DOCKER",
+        [object]$ExistingCounts = $null,
+        [object]$ExistingData = $null
     )
     
     try {
@@ -81,81 +89,186 @@ function Invoke-AuthScript {
         # Validate auth script exists
         $scriptPath = Resolve-Path $AuthScriptPath -ErrorAction Stop
         
-        Write-Log "Executing auth script: $scriptPath" "INFO"
+        # Increment call counter
+        $Global:AuthCallCount++
+        $isFirstAuth = ($Global:AuthCallCount -eq 1)
+        $now = Get-Date
+        if ($Global:LastAuthTime) {
+            $delta = $now - $Global:LastAuthTime
+            Write-Log ("Time since previous auth call: {0:N2}s" -f $delta.TotalSeconds) "INFO"
+        }
+        $Global:LastAuthTime = $now
+        
+        if ($isFirstAuth) {
+            Write-Log "═══════════════════════════════════════════════════════" "SUCCESS"
+            Write-Log "FIRST AUTH REQUEST - Password prompt is EXPECTED" "SUCCESS"
+            Write-Log "Executing auth.ps1 IN-PROCESS for credential caching" "SUCCESS"
+            Write-Log "═══════════════════════════════════════════════════════" "SUCCESS"
+            $Global:FirstAuthTime = Get-Date
+        } else {
+            $elapsedSinceFirst = (Get-Date) - $Global:FirstAuthTime
+            $elapsedSeconds = [math]::Round($elapsedSinceFirst.TotalSeconds, 1)
+            Write-Log "═══════════════════════════════════════════════════════" "INFO"
+            Write-Log "RE-AUTH REQUEST #$Global:AuthCallCount (${elapsedSeconds}s since first)" "INFO"
+            Write-Log "Password prompt should NOT appear (credential caching!)" "INFO"
+            Write-Log "═══════════════════════════════════════════════════════" "INFO"
+        }
+        
         Write-Log "Certificate thumbprint: $certThumbprint" "INFO"
         Write-Log "Client IDs: $ClientIds" "INFO"
         Write-Log "Station ID: $StationId" "INFO"
         
-        # Build PowerShell command
-        $psArgs = @(
-            "-ExecutionPolicy", "Bypass"
-            "-File", $scriptPath
-            "-thumbprint", $certThumbprint
-            "-StationId", $StationId
-        )
+        # CRITICAL: Execute auth.ps1 IN THIS PROCESS using Invoke-Expression
+        # This preserves Windows credential caching across multiple auth requests!
         
-        if ($ClientIds -and $ClientIds.Trim() -ne "") {
-            $psArgs += @("-ClientIds", $ClientIds)
-        }
-        
-        # Execute auth script and capture output
-        Write-Log "Starting PowerShell process..." "INFO"
-        
-        # Create temporary files for output capture
-        $tempDir = [System.IO.Path]::GetTempPath()
-        $stdOutFile = Join-Path $tempDir "auth-stdout-$(Get-Random).txt"
-        $stdErrFile = Join-Path $tempDir "auth-stderr-$(Get-Random).txt"
-        
-        $process = Start-Process -FilePath "pwsh" -ArgumentList $psArgs -Wait -NoNewWindow -PassThru -RedirectStandardOutput $stdOutFile -RedirectStandardError $stdErrFile
-        
-        if ($process.ExitCode -ne 0) {
-            $errorOutput = if (Test-Path $stdErrFile) { 
-                Get-Content $stdErrFile -Raw 
-            } else { 
-                "Auth script failed with exit code $($process.ExitCode)" 
+        # Load auth script content if not already loaded
+        if ($null -eq $Global:AuthScriptContent) {
+            Write-Log "Loading auth.ps1 content for in-process execution..." "INFO"
+            $rawContent = Get-Content $scriptPath -Raw
+            
+            # Remove the param() block at the top - it's not valid inside a script block
+            # We'll set the variables manually instead
+            # The param block must be at the very start of the script
+            if ($rawContent.TrimStart() -match '^param\s*\(') {
+                # Find the closing parenthesis by counting parentheses
+                $depth = 0
+                $inParam = $false
+                $endIndex = -1
+                
+                for ($i = 0; $i -lt $rawContent.Length; $i++) {
+                    $char = $rawContent[$i]
+                    
+                    if ($char -eq '(' -and -not $inParam) {
+                        # Check if this is the 'param(' opening
+                        $before = $rawContent.Substring([Math]::Max(0, $i - 5), [Math]::Min(5, $i))
+                        if ($before -match 'param$') {
+                            $inParam = $true
+                            $depth = 1
+                        }
+                    } elseif ($inParam) {
+                        if ($char -eq '(') {
+                            $depth++
+                        } elseif ($char -eq ')') {
+                            $depth--
+                            if ($depth -eq 0) {
+                                $endIndex = $i + 1
+                                break
+                            }
+                        }
+                    }
+                }
+                
+                if ($endIndex -gt 0) {
+                    $Global:AuthScriptContent = $rawContent.Substring($endIndex).TrimStart()
+                    Write-Log "Removed param() block (${endIndex} chars) from auth script" "INFO"
+                } else {
+                    # Fallback: just skip first line if it starts with param
+                    $lines = $rawContent -split "`n"
+                    $firstNonParamLine = 0
+                    for ($i = 0; $i -lt $lines.Count; $i++) {
+                        if ($lines[$i].TrimStart() -notmatch '^param|^\s*\[|^\)') {
+                            $firstNonParamLine = $i
+                            break
+                        }
+                    }
+                    $Global:AuthScriptContent = ($lines[$firstNonParamLine..($lines.Count - 1)] -join "`n")
+                    Write-Log "Removed param() block using line-based fallback" "WARN"
+                }
+            } else {
+                $Global:AuthScriptContent = $rawContent
             }
-            # Clean up temp files
-            if (Test-Path $stdOutFile) { Remove-Item $stdOutFile -Force }
-            if (Test-Path $stdErrFile) { Remove-Item $stdErrFile -Force }
-            throw "Auth script execution failed: $errorOutput"
+            
+            Write-Log "Auth script content loaded (${($Global:AuthScriptContent.Length)} chars)" "SUCCESS"
         }
         
-        # Read the output
-        $output = ""
-        if (Test-Path $stdOutFile) {
-            $output = Get-Content $stdOutFile -Raw
+        # Parse client IDs array
+        $clientIdArray = if ($ClientIds -and $ClientIds.Trim() -ne "") {
+            $ClientIds.Split(',').Trim()
+        } else {
+            @()
         }
         
-        # Clean up temp files
-        try {
-            if (Test-Path $stdOutFile) { Remove-Item $stdOutFile -Force }
-            if (Test-Path $stdErrFile) { Remove-Item $stdErrFile -Force }
+        # Parse existing counts
+        $existingCountsStr = ""
+        $existingDataStr = ""
+        if ($ExistingCounts) {
+            $existingCountsStr = $ExistingCounts | ConvertTo-Json -Compress
         }
-        catch {
-            Write-Log "Warning: Failed to clean up temp files: $($_.Exception.Message)" "WARN"
-        }
-        
-        # Extract session data between markers
-        $sessionDataMatch = $output | Select-String -Pattern "SESSION_DATA_START\s*(.*?)\s*SESSION_DATA_END" -AllMatches
-        
-        if ($sessionDataMatch.Matches.Count -eq 0) {
-            throw "No session data found in auth script output"
+        if ($ExistingData) {
+            $existingDataStr = $ExistingData | ConvertTo-Json -Compress -Depth 10
         }
         
-        $sessionJson = $sessionDataMatch.Matches[0].Groups[1].Value
+        Write-Log "Executing auth.ps1 script block IN CURRENT PROCESS..." "INFO"
+        
+        # Create a script block with the auth script content and execute it in current scope
+        # This is THE KEY - by executing in the same process, Windows credential caching works!
+        $scriptBlock = [ScriptBlock]::Create(@"
+# Set parameters as variables for the script
+`$thumbprint = '$certThumbprint'
+`$ClientIds = @($($clientIdArray | ForEach-Object { "'$_'" } | Join-String -Separator ', '))
+`$StationId = '$StationId'
+`$ExistingCounts = '$existingCountsStr'
+`$ExistingData = '$existingDataStr'
+
+# Execute the auth script content
+$Global:AuthScriptContent
+"@)
+        
+        # Capture output to extract session data
+        $output = & {
+            $ErrorActionPreference = 'Stop'
+            # Redirect Write-Host to capture output
+            $inSessionData = $false
+            $sessionDataLines = @()
+            
+            # Execute the script block and capture all output
+            try {
+                & $scriptBlock *>&1 | ForEach-Object {
+                    $line = $_.ToString()
+                    if ($line -match "SESSION_DATA_START") {
+                        $inSessionData = $true
+                    } elseif ($line -match "SESSION_DATA_END") {
+                        $inSessionData = $false
+                    } elseif ($inSessionData) {
+                        $sessionDataLines += $line
+                    }
+                    Write-Host $line
+                }
+            } catch {
+                Write-Error "Script execution failed: $_"
+                throw
+            }
+            
+            # Return the captured session data
+            return ($sessionDataLines -join "")
+        }
+        
+        $sessionJson = $output
+        
+        if ([string]::IsNullOrWhiteSpace($sessionJson)) {
+            throw "No session data captured from auth script"
+        }
         
         # Validate JSON
         try {
             $sessionData = $sessionJson | ConvertFrom-Json
-            Write-Log "Auth script executed successfully, session data captured" "SUCCESS"
+            if ($isFirstAuth) {
+                Write-Log "✅ FIRST AUTH COMPLETED - Credentials now cached in process!" "SUCCESS"
+            } else {
+                Write-Log "✅ RE-AUTH COMPLETED using cached credentials!" "SUCCESS"
+            }
+            $guidPreview = if ($sessionData.guid) { ($sessionData.guid.Substring(0, [Math]::Min(8, $sessionData.guid.Length))) + '...' } else { 'missing' }
+            $clientCount = if ($sessionData.metadata -and $sessionData.metadata.clientIds) { $sessionData.metadata.clientIds.Count } else { 0 }
+            Write-Log "Session ready: GUID=$guidPreview | Clients=$clientCount | Timestamp=$([DateTimeOffset]::UtcNow.ToString('HH:mm:ss.fff'))" "INFO"
             return $sessionJson
         }
         catch {
-            throw "Invalid session JSON returned from auth script: $($_.Exception.Message)"
+            throw "Invalid session JSON: $($_.Exception.Message)"
         }
     }
     catch {
         Write-Log "Auth script execution failed: $($_.Exception.Message)" "ERROR"
+        Write-Log "Stack: $($_.ScriptStackTrace)" "ERROR"
         throw
     }
 }
@@ -207,7 +320,6 @@ function Start-AuthServer {
                 # Wait for a request
                 $context = $listener.GetContext()
                 $request = $context.Request
-                $response = $context.Response
                 
                 $method = $request.HttpMethod
                 $path = $request.Url.LocalPath
@@ -239,6 +351,8 @@ function Start-AuthServer {
                             # Parse request parameters
                             $clientIds = ""
                             $stationId = "DOCKER"
+                            $existingCounts = $null
+                            $existingData = $null
                             
                             if ($requestBody) {
                                 try {
@@ -253,6 +367,12 @@ function Start-AuthServer {
                                     if ($requestData.stationId) {
                                         $stationId = $requestData.stationId
                                     }
+                                    if ($requestData.existingCounts) {
+                                        $existingCounts = $requestData.existingCounts
+                                    }
+                                    if ($requestData.existingData) {
+                                        $existingData = $requestData.existingData
+                                    }
                                 }
                                 catch {
                                     Write-Log "Failed to parse request JSON, using defaults" "WARN"
@@ -261,7 +381,7 @@ function Start-AuthServer {
                             
                             # Execute authentication
                             Write-Log "Starting certificate authentication..." "INFO"
-                            $sessionJson = Invoke-AuthScript -ClientIds $clientIds -StationId $stationId
+                            $sessionJson = Invoke-AuthScript -ClientIds $clientIds -StationId $stationId -ExistingCounts $existingCounts -ExistingData $existingData
                             
                             # Send successful response
                             Send-HttpResponse -Context $context -Body $sessionJson
