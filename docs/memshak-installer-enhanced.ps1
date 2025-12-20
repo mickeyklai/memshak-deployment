@@ -2,14 +2,14 @@
 
 <#
 .SYNOPSIS
-    Memshak CDN Installer - Enhanced PowerShell Version
+    Mali CDN Installer - Enhanced PowerShell Version
     
 .DESCRIPTION
-    Downloads and installs Memshak system with automatic prerequisite installation
+    Downloads and installs Mali system with automatic prerequisite installation
     - Automatically installs Chocolatey if not present
     - Installs PowerShell 7, Docker Desktop, and WSL via Chocolatey
     - Configures Docker for automatic startup
-    - Sets up the complete Memshak system
+    - Sets up the complete Mali system
     
 .NOTES
     Requires Administrator privileges
@@ -323,7 +323,7 @@ $tempZip = "deployment.zip"
 
 try {
     Write-Info "Downloading from: $downloadUrl"
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $tempZip -UserAgent 'Memshak-CDN/2.1' -TimeoutSec 60
+    Invoke-WebRequest -Uri $downloadUrl -OutFile $tempZip -UserAgent 'Mali-CDN/2.1' -TimeoutSec 60
     Write-Success "Deployment package downloaded successfully"
 }
 catch {
@@ -353,7 +353,7 @@ catch {
     exit 1
 }
 
-Write-Step "4/7 - Setting up Memshak system"
+Write-Step "4/7 - Setting up Mali system"
 
 try {
     # Create installation directory
@@ -364,13 +364,13 @@ try {
     # Copy deployment files
     Copy-Item -Path "$($extractedDir.FullName)\*" -Destination $InstallDir -Recurse -Force
     
-    Write-Success "Memshak system files installed to: $InstallDir"
+    Write-Success "Mali system files installed to: $InstallDir"
     
     # Clean up extracted directory
     Remove-Item $extractedDir.FullName -Recurse -Force
 }
 catch {
-    Write-ErrorMsg "Failed to set up Memshak system: $_"
+    Write-ErrorMsg "Failed to set up Mali system: $_"
     Read-Host "Press Enter to exit"
     exit 1
 }
@@ -408,19 +408,19 @@ try {
     # Create desktop shortcut
     Write-Info "Creating desktop shortcut..."
     $WshShell = New-Object -ComObject WScript.Shell
-    $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Memshak.lnk")
+    $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Mali.lnk")
     $Shortcut.TargetPath = "http://localhost:4200"
     $Shortcut.Save()
     Write-Success "Desktop shortcut created"
     
     # Create start menu shortcut
     Write-Info "Creating start menu shortcut..."
-    $startMenuPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Memshak"
+    $startMenuPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Mali"
     if (-not (Test-Path $startMenuPath)) {
         New-Item -ItemType Directory -Path $startMenuPath -Force | Out-Null
     }
     
-    $Shortcut = $WshShell.CreateShortcut("$startMenuPath\Memshak.lnk")
+    $Shortcut = $WshShell.CreateShortcut("$startMenuPath\Mali.lnk")
     $Shortcut.TargetPath = "http://localhost:4200"
     $Shortcut.Save()
     Write-Success "Start menu shortcut created"
@@ -436,7 +436,7 @@ Write-Host "==========================================" -ForegroundColor Green
 Write-Host "   INSTALLATION COMPLETED SUCCESSFULLY!" -ForegroundColor Green
 Write-Host "==========================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "🎉 Memshak system has been installed with all prerequisites!" -ForegroundColor Green
+Write-Host "🎉 Mali system has been installed with all prerequisites!" -ForegroundColor Green
 Write-Host ""
 Write-Host "📍 Installation Location: $InstallDir" -ForegroundColor Green
 Write-Host "🌐 Access URL: http://localhost:4200" -ForegroundColor Green
@@ -448,12 +448,12 @@ Write-Host "✅ Chocolatey Package Manager" -ForegroundColor Green
 Write-Host "✅ PowerShell 7" -ForegroundColor Green
 Write-Host "✅ Docker Desktop (with auto-start)" -ForegroundColor Green
 Write-Host "✅ WSL (Windows Subsystem for Linux)" -ForegroundColor Green
-Write-Host "✅ Memshak Application Services" -ForegroundColor Green
+Write-Host "✅ Mali Application Services" -ForegroundColor Green
 Write-Host ""
 Write-Host "🚀 NEXT STEPS:" -ForegroundColor Green
 Write-Host "1. Restart your computer to ensure all components are fully active" -ForegroundColor Green
 Write-Host "2. After restart, Docker Desktop should start automatically" -ForegroundColor Green
-Write-Host "3. Open Memshak via desktop shortcut or navigate to http://localhost:4200" -ForegroundColor Green
+Write-Host "3. Open Mali via desktop shortcut or navigate to http://localhost:4200" -ForegroundColor Green
 Write-Host ""
 Write-Host "💡 If services don't start automatically after restart:" -ForegroundColor Green
 Write-Host "   • Check if Docker Desktop is running" -ForegroundColor Green

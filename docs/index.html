@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Memshak Installer Download</title>
+    <title>Mali Installer Download</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -32,11 +32,23 @@
             margin: 20px 0;
             transition: all 0.3s;
             box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+            cursor: pointer;
         }
         .download-btn:hover {
             background: #218838;
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+        }
+        .download-btn.secondary {
+            background: rgba(255,255,255,0.2);
+            font-size: 14px;
+            padding: 10px 20px;
+            margin-top: 10px;
+            box-shadow: none;
+        }
+        .download-btn.secondary:hover {
+            background: rgba(255,255,255,0.3);
+            box-shadow: none;
         }
         .info-box {
             background: rgba(255,255,255,0.1);
@@ -68,49 +80,77 @@
 </head>
 <body>
     <div class="container">
-        <h1>🏥 Memshak System Installer</h1>
-        <p>Professional healthcare management system with automatic prerequisite installation</p>
+        <h1>🏥 Mali System Installer</h1>
+        <p>Professional healthcare management system - Native Desktop Application</p>
         
-        <a href="INSTALL-MEMSHAK.bat" class="download-btn" download="INSTALL-MEMSHAK.bat">
-            🚀 Download Enhanced Installer
+        <!-- Primary Download Button for Electron App -->
+        <a id="download-link" href="#" class="download-btn">
+            Loading latest version...
         </a>
         
+        <br>
+        
         <div class="info-box">
-            <h3>📋 Quick Start:</h3>
+            <h3>📋 Quick Start (Desktop App):</h3>
             <ol>
-                <li>Click the download button above</li>
-                <li><strong>Simply double-click</strong> the downloaded file</li>
-                <li>Administrator privileges will be automatically requested</li>
-                <li>Everything is fully automated - no manual steps!</li>
-                <li>Access your system at <strong>http://localhost:4200</strong></li>
+                <li>Click the <strong>Download Mali</strong> button above</li>
+                <li>Run the downloaded installer (<code>Mali-Setup-x.x.x.exe</code>)</li>
+                <li>The application will launch automatically</li>
+                <li>Updates will be installed automatically in the background</li>
             </ol>
         </div>
         
         <div class="info-box">
-            <h3>✨ What gets installed automatically:</h3>
-            <div class="feature">Chocolatey Package Manager</div>
-            <div class="feature">PowerShell 7 (latest version)</div>
-            <div class="feature">WSL2 (Windows Subsystem for Linux)</div>
-            <div class="feature">Docker Desktop with auto-startup</div>
-            <div class="feature">Complete Memshak healthcare system</div>
-            <div class="feature">Desktop & Start Menu shortcuts</div>
-        </div>
-        
-        <div class="warning-box">
-            <h3>⚠️ System Requirements</h3>
-            <p><strong>Windows 10/11 with Administrator privileges</strong></p>
-            <p>All prerequisites installed automatically - no manual setup required!</p>
-            <p>System restart may be required for WSL2 and Docker</p>
+            <h3>✨ Features:</h3>
+            <div class="feature">Native Windows Application (Fast & Lightweight)</div>
+            <div class="feature">Automatic Background Updates</div>
+            <div class="feature">Zero Prerequisites (No Docker/WSL required)</div>
+            <div class="feature">Complete Healthcare Management System</div>
+            <div class="feature">Desktop & Tray Integration</div>
         </div>
         
         <p style="margin-top: 30px; font-size: 14px; opacity: 0.8;">
-            Version 2.0 | Updated: <span id="updated"></span> | 
+            <span id="version-display">Checking version...</span> | 
             <a href="https://github.com/mickeyklai/memshak" style="color: #fff;">Source Code</a>
         </p>
     </div>
     
     <script>
-        document.getElementById('updated').textContent = new Date().toLocaleDateString();
+        // GitHub Repository Details
+        const owner = 'mickeyklai';
+        const repo = 'memshak-deployment';
+
+        // Fetch latest release from GitHub API
+        fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`)
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                // Find the .exe asset
+                const asset = data.assets.find(a => a.name.endsWith('.exe'));
+                
+                const btn = document.getElementById('download-link');
+                const verDisplay = document.getElementById('version-display');
+                
+                if (asset) {
+                    btn.href = asset.browser_download_url;
+                    btn.innerText = `🚀 Download Mali Desktop (${data.tag_name})`;
+                    verDisplay.textContent = `Latest Version: ${data.tag_name}`;
+                } else {
+                    btn.innerText = '❌ No installer found in latest release';
+                    btn.style.background = '#dc3545'; // Red color for error
+                    console.error('No .exe asset found in release:', data);
+                }
+            })
+            .catch(err => {
+                console.error('Error fetching release:', err);
+                const btn = document.getElementById('download-link');
+                btn.innerText = '⚠️ Error checking updates (Click for Manual Page)';
+                btn.href = `https://github.com/${owner}/${repo}/releases`;
+                btn.style.background = '#ffc107'; // Yellow color for warning
+                btn.style.color = '#000';
+            });
     </script>
 </body>
 </html>
