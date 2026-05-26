@@ -128,7 +128,9 @@
             })
             .then(data => {
                 // Find the .exe asset
-                const asset = data.assets.find(a => a.name.endsWith('.exe'));
+                 const asset = release.assets.find(a =>
+                   a.name.endsWith('.exe') && !a.name.toLowerCase().includes('staging')
+                 );
                 
                 const btn = document.getElementById('download-link');
                 const verDisplay = document.getElementById('version-display');
