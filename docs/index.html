@@ -128,7 +128,7 @@
             })
             .then(data => {
                 // Find the .exe asset
-                 const asset = release.assets.find(a =>
+                 const asset = data.assets.find(a =>
                    a.name.endsWith('.exe') && !a.name.toLowerCase().includes('staging')
                  );
                 
